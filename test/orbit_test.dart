@@ -14,6 +14,10 @@ class CounterStore extends OrbitStore {
 
   void increment() => mutate(() => _count++, label: 'increment');
 
+  R runMutate<R>(R Function() action) => mutate(action);
+
+  Future<R> runMutateAsync<R>(Future<R> Function() action) => mutateAsync(action);
+
   Future<void> incrementAsync() async {
     await mutateAsync(() async {
       await Future<void>.delayed(Duration.zero);
@@ -430,10 +434,10 @@ void main() {
     test('mutate and mutateAsync return action result', () async {
       final store = Orbit.use<CounterStore>(() => CounterStore());
 
-      final val = store.mutate(() => 42);
+      final val = store.runMutate(() => 42);
       expect(val, 42);
 
-      final asyncVal = await store.mutateAsync(() async => 99);
+      final asyncVal = await store.runMutateAsync(() async => 99);
       expect(asyncVal, 99);
     });
 
@@ -546,5 +550,52 @@ void main() {
       expect(find.text('Builder: 1'), findsOneWidget);
       expect(find.text('Select: 2'), findsOneWidget);
     });
+
+    test('observer exceptions do not break remaining observers or store mutation', () {
+      bool secondObserverRan = false;
+
+      final unsubscribe1 = Orbit.observe((store, mutation) {
+        throw Exception('Observer 1 crashed!');
+      });
+      final unsubscribe2 = Orbit.observe((store, mutation) {
+        secondObserverRan = true;
+      });
+
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      expect(() => store.increment(), returnsNormally);
+      expect(secondObserverRan, isTrue);
+
+      unsubscribe1();
+      unsubscribe2();
+    });
+
+    testWidgets('OrbitScope disposes store if init() throws synchronously', (tester) async {
+      bool disposed = false;
+
+      await tester.pumpWidget(
+        OrbitScope<ScopeFailingInitStore>(
+          create: () => ScopeFailingInitStore(onDisposeCallback: () => disposed = true),
+          child: const SizedBox.shrink(),
+        ),
+      );
+
+      final dynamic error = tester.takeException();
+      expect(error, isA<StateError>());
+      expect(disposed, isTrue);
+    });
   });
+}
+
+class ScopeFailingInitStore extends OrbitStore {
+  final VoidCallback onDisposeCallback;
+
+  ScopeFailingInitStore({required this.onDisposeCallback});
+
+  @override
+  FutureOr<void> init() {
+    throw StateError('Init failed synchronously');
+  }
+
+  @override
+  void onDispose() => onDisposeCallback();
 }

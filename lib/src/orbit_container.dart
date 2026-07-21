@@ -70,7 +70,16 @@ class Orbit {
     // Iterate a copy: an observer that (un)registers another observer
     // mid-callback shouldn't crash or skip entries.
     for (final observer in List.of(_observers)) {
-      observer(store, mutation);
+      try {
+        observer(store, mutation);
+      } catch (exception, stackTrace) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: exception,
+          stack: stackTrace,
+          library: 'orbit',
+          context: ErrorDescription('while handling Orbit observer'),
+        ));
+      }
     }
   }
 
@@ -133,6 +142,7 @@ class Orbit {
   static void resetAll() {
     final stores = List<OrbitStore>.of(_stores.values);
     _stores.clear();
+    _log.clear();
     for (final store in stores) {
       store.dispose();
     }

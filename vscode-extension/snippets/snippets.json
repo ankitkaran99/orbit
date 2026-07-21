@@ -16,7 +16,7 @@
       "  Map<String, Object?> debugSnapshot() => {'${3:value}': _${3:value}};",
       "}",
       "",
-      "final ${1/(.*)/${1:/downcase}/}Store = defineStore(() => ${1:Counter}Store());"
+      "final ${1/(.*)/${1:/camelcase}/}Store = defineStore(() => ${1:Counter}Store());"
     ],
     "description": "Creates an OrbitStore class with private state, getter, mutate method, and defineStore singleton"
   },
@@ -49,7 +49,7 @@
       "  Map<String, Object?> debugSnapshot() => {'${3:isLoading}': _${3:isLoading}};",
       "}",
       "",
-      "final ${1/(.*)/${1:/downcase}/}Store = defineStore(() => ${1:User}Store());"
+      "final ${1/(.*)/${1:/camelcase}/}Store = defineStore(() => ${1:User}Store());"
     ],
     "description": "Creates an OrbitStore with lifecycle hooks (init, onResume, onDispose) and debugSnapshot"
   },

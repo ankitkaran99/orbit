@@ -89,7 +89,12 @@ class _OrbitScopeState<T extends OrbitStore> extends State<OrbitScope<T>> {
   void initState() {
     super.initState();
     _store = widget.create();
-    _store._runInit();
+    try {
+      _store._runInit();
+    } catch (_) {
+      _store.dispose();
+      rethrow;
+    }
   }
 
   @override
