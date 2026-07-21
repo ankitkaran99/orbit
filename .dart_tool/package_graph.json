@@ -1,10 +1,10 @@
 {
   "roots": [
-    "orbit"
+    "orbit_state"
   ],
   "packages": [
     {
-      "name": "orbit",
+      "name": "orbit_state",
       "version": "0.2.0",
       "dependencies": [
         "flutter"

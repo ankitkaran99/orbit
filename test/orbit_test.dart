@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:orbit/orbit.dart';
+import 'package:orbit_state/orbit.dart';
 
 class CounterStore extends OrbitStore {
   int _count = 0;
