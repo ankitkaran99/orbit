@@ -1,0 +1,37 @@
+{
+  "name": "orbit-flutter",
+  "displayName": "Orbit Flutter State Management",
+  "description": "VS Code extension for Orbit — Flutter state management snippets and store generator",
+  "version": "1.1.0",
+  "publisher": "orbit",
+  "icon": "orbit.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Snippets",
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:dart",
+    "onCommand:orbit.createStore"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "orbit.createStore",
+        "title": "Orbit: Create OrbitStore"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "dart",
+        "path": "./snippets/snippets.json"
+      }
+    ]
+  },
+  "scripts": {
+    "package": "vsce package --allow-missing-repository"
+  }
+}

@@ -1,0 +1,172 @@
+{
+  "Orbit Store": {
+    "prefix": "os-store",
+    "body": [
+      "import 'package:orbit/orbit.dart';",
+      "",
+      "class ${1:Counter}Store extends OrbitStore {",
+      "  ${2:int} _${3:value} = ${4:0};",
+      "  ${2:int} get ${3:value} => _${3:value};",
+      "",
+      "  void update${3/(.*)/${1:/capitalize}/}(${2:int} newValue) {",
+      "    mutate(() => _${3:value} = newValue);",
+      "  }",
+      "",
+      "  @override",
+      "  Map<String, Object?> debugSnapshot() => {'${3:value}': _${3:value}};",
+      "}",
+      "",
+      "final ${1/(.*)/${1:/downcase}/}Store = defineStore(() => ${1:Counter}Store());"
+    ],
+    "description": "Creates an OrbitStore class with private state, getter, mutate method, and defineStore singleton"
+  },
+  "Orbit Store Full": {
+    "prefix": "os-store-full",
+    "body": [
+      "import 'dart:async';",
+      "import 'package:orbit/orbit.dart';",
+      "",
+      "class ${1:User}Store extends OrbitStore {",
+      "  ${2:bool} _${3:isLoading} = false;",
+      "  ${2:bool} get ${3:isLoading} => _${3:isLoading};",
+      "",
+      "  @override",
+      "  Future<void> init() async {",
+      "    // Initial async setup",
+      "  }",
+      "",
+      "  @override",
+      "  void onResume() {",
+      "    // App came back to foreground",
+      "  }",
+      "",
+      "  @override",
+      "  void onDispose() {",
+      "    // Cleanup timers/subscriptions",
+      "  }",
+      "",
+      "  @override",
+      "  Map<String, Object?> debugSnapshot() => {'${3:isLoading}': _${3:isLoading}};",
+      "}",
+      "",
+      "final ${1/(.*)/${1:/downcase}/}Store = defineStore(() => ${1:User}Store());"
+    ],
+    "description": "Creates an OrbitStore with lifecycle hooks (init, onResume, onDispose) and debugSnapshot"
+  },
+  "Orbit Builder": {
+    "prefix": "os-builder",
+    "body": [
+      "OrbitBuilder<${1:CounterStore}>(",
+      "  store: ${2:counterStore},",
+      "  builder: (context, store, child) {",
+      "    return ${3:Text('\\${store.${4:value}}')};",
+      "  },",
+      ")"
+    ],
+    "description": "Inserts an OrbitBuilder widget listening to an OrbitStore"
+  },
+  "Orbit Builder with Child": {
+    "prefix": "os-builder-child",
+    "body": [
+      "OrbitBuilder<${1:CounterStore}>(",
+      "  store: ${2:counterStore},",
+      "  child: ${3:const StaticWidget()},",
+      "  builder: (context, store, child) {",
+      "    return Row(",
+      "      children: [",
+      "        child!,",
+      "        Text('\\${store.${4:value}}'),",
+      "      ],",
+      "    );",
+      "  },",
+      ")"
+    ],
+    "description": "Inserts an OrbitBuilder widget with static child caching"
+  },
+  "Orbit Ref Builder": {
+    "prefix": "os-ref-builder",
+    "body": [
+      "${1:counterStore}.builder(",
+      "  builder: (context, store, child) {",
+      "    return ${2:Text('\\${store.${3:value}}')};",
+      "  },",
+      ")"
+    ],
+    "description": "Inserts an OrbitStoreRef.builder widget call"
+  },
+  "Orbit Selector": {
+    "prefix": "os-selector",
+    "body": [
+      "OrbitSelector<${1:CounterStore}, ${2:int}>(",
+      "  store: ${3:counterStore},",
+      "  selector: (store) => store.${4:value},",
+      "  builder: (context, ${4:value}) {",
+      "    return ${5:Text('\\$${4:value}')};",
+      "  },",
+      ")"
+    ],
+    "description": "Inserts an OrbitSelector widget for selective slice re-renders"
+  },
+  "Orbit Ref Select": {
+    "prefix": "os-ref-select",
+    "body": [
+      "${1:counterStore}.select(",
+      "  selector: (store) => store.${2:value},",
+      "  builder: (context, ${2:value}) {",
+      "    return ${3:Text('\\$${2:value}')};",
+      "  },",
+      ")"
+    ],
+    "description": "Inserts an OrbitStoreRef.select widget call"
+  },
+  "Orbit Scope": {
+    "prefix": "os-scope",
+    "body": [
+      "OrbitScope<${1:FormStore}>(",
+      "  create: () => ${1:FormStore}(),",
+      "  child: ${2:const FormWidget()},",
+      ")"
+    ],
+    "description": "Inserts an OrbitScope widget to bound store lifetime to subtree"
+  },
+  "Orbit Context Watch": {
+    "prefix": "os-context",
+    "body": [
+      "final ${1:store} = context.orbit<${2:MyStore}>();"
+    ],
+    "description": "Accesses nearest OrbitScope store and subscribes BuildContext to changes"
+  },
+  "Orbit Context Read": {
+    "prefix": "os-context-read",
+    "body": [
+      "final ${1:store} = context.orbitRead<${2:MyStore}>();"
+    ],
+    "description": "Reads Orbit store without subscribing BuildContext (for event handlers)"
+  },
+  "Orbit Mutate": {
+    "prefix": "os-mutate",
+    "body": [
+      "mutate(() => _${1:state} = ${2:newValue});"
+    ],
+    "description": "Inserts a synchronous mutate call inside OrbitStore"
+  },
+  "Orbit Mutate Async": {
+    "prefix": "os-mutate-async",
+    "body": [
+      "await mutateAsync(() async {",
+      "  ${1:// async work}",
+      "});"
+    ],
+    "description": "Inserts an asynchronous mutateAsync call inside OrbitStore"
+  },
+  "Orbit Observer Middleware": {
+    "prefix": "os-observe",
+    "body": [
+      "final ${1:unsubscribe} = Orbit.observe((store, mutation) {",
+      "  ${2:print('[Mutation] \\${mutation.action} — \\${mutation.diff}');}",
+      "});"
+    ],
+    "description": "Inserts an Orbit.observe mutation listener middleware"
+  }
+}
+
