@@ -18,7 +18,7 @@ part of '../orbit.dart';
 ///   // needed, they always read the latest fields.
 ///   int get doubleCount => _count * 2;
 ///
-///   void increment() => mutate(() => _count++, label: 'increment');
+///   void increment() => mutate(() => _count++);
 ///
 ///   // Optional: called once, sync or async, right after creation.
 ///   @override
@@ -123,8 +123,8 @@ abstract class OrbitStore extends ChangeNotifier {
   /// Runs [action], then notifies every listener that state changed.
   ///
   /// Returns the result of [action].
-  /// Pass [label] to name the action for [Orbit.observe] middleware and
-  /// debug logging — e.g. `mutate(() => count++, label: 'increment')`.
+  /// Optionally pass [label] to override the action name for [Orbit.observe] middleware
+  /// and debug logging — e.g. `mutate(() => count++)` (automatically uses `'increment'`).
   /// If omitted, [label] is automatically inferred from the calling method name.
   /// If you also override [debugSnapshot], Orbit logs exactly which
   /// fields changed.

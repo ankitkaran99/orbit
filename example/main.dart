@@ -12,8 +12,8 @@ class CounterStore extends OrbitStore {
   int get doubleCount => _count * 2;
   bool get isEven => _count % 2 == 0;
 
-  void increment() => mutate(() => _count++, label: 'increment');
-  void decrement() => mutate(() => _count--, label: 'decrement');
+  void increment() => mutate(() => _count++);
+  void decrement() => mutate(() => _count--);
 
   // Optional: called once on first creation. Can be sync or async — here
   // it pretends to load a persisted starting value. The store is usable

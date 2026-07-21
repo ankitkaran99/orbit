@@ -12,7 +12,7 @@ class CounterStore extends OrbitStore {
   int get count => _count;
   int get doubleCount => _count * 2;
 
-  void increment() => mutate(() => _count++, label: 'increment');
+  void increment() => mutate(() => _count++);
 
   R runMutate<R>(R Function() action) => mutate(action);
 
@@ -22,7 +22,7 @@ class CounterStore extends OrbitStore {
     await mutateAsync(() async {
       await Future<void>.delayed(Duration.zero);
       _count++;
-    }, label: 'incrementAsync');
+    });
   }
 
   @override
