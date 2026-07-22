@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:orbit/orbit.dart';
+import 'package:orbit_state/orbit.dart';
 
 /// 1. Define a store: private fields + public getters, so state can
 /// only change through mutate() — never by direct assignment from
@@ -40,6 +40,18 @@ class CounterStore extends OrbitStore {
 // `counterStore()` shares this exact factory, so there's no risk of two
 // call sites silently disagreeing on how it's constructed.
 final counterStore = defineStore(() => CounterStore());
+
+// A derived store that automatically recomputes double count.
+final doubleCounterStore = defineStore(() => ComputedStore<int>((watch) {
+      final counter = watch(counterStore);
+      return counter.count * 2;
+    }));
+
+// An async store that pretends to fetch data from a server.
+final userProvider = defineStore(() => FutureProvider<String>(() async {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      return 'John Doe';
+    }));
 
 void main() {
   // Mutation middleware — logging, analytics, persistence — without
@@ -85,6 +97,35 @@ class MyApp extends StatelessWidget {
               counterStore.select<bool>(
                 selector: (store) => store.isEven,
                 builder: (context, isEven) => Text(isEven ? 'Even' : 'Odd'),
+              ),
+              const SizedBox(height: 16),
+              doubleCounterStore.builder(
+                builder: (context, store, _) => Text(
+                  'Computed Double Count: ${store.state}',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ),
+              const SizedBox(height: 16),
+              userProvider.builder(
+                builder: (context, provider, _) => provider.state.when(
+                  data: (name) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Async User: $name'),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: provider.refresh,
+                      ),
+                    ],
+                  ),
+                  loading: () => const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  error: (err, stack) => Text('Error: $err'),
+                ),
               ),
               const SizedBox(height: 24),
               ElevatedButton(

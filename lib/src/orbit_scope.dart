@@ -125,8 +125,8 @@ T _resolveStore<T extends OrbitStore>(
   BuildContext context,
   T Function() create,
 ) {
-  final element =
-      context.getElementForInheritedWidgetOfExactType<_OrbitScopeInherited<T>>();
+  final element = context
+      .getElementForInheritedWidgetOfExactType<_OrbitScopeInherited<T>>();
   if (element != null) {
     return (element.widget as _OrbitScopeInherited<T>).store;
   }

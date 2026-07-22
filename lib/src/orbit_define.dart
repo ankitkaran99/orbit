@@ -22,7 +22,8 @@ class OrbitStoreRef<T extends OrbitStore> {
   /// Returns an [OrbitBuilder] listening to this store.
   Widget builder({
     Key? key,
-    required Widget Function(BuildContext context, T store, Widget? child) builder,
+    required Widget Function(BuildContext context, T store, Widget? child)
+        builder,
     Widget? child,
   }) {
     return OrbitBuilder<T>(
@@ -47,6 +48,27 @@ class OrbitStoreRef<T extends OrbitStore> {
       builder: builder,
       equals: equals,
     );
+  }
+
+  /// Accesses this store from the nearest [OrbitScope], falling back
+  /// to the app-wide singleton if no scope is found.
+  ///
+  /// Subscribes this widget context to rebuild whenever this store changes
+  /// if [listen] is true (only applicable when resolved via [OrbitScope]).
+  T of(BuildContext context, {bool listen = true}) {
+    if (listen) {
+      final scoped = context
+          .dependOnInheritedWidgetOfExactType<_OrbitScopeInherited<T>>()
+          ?.store;
+      if (scoped != null) return scoped;
+    } else {
+      final element = context
+          .getElementForInheritedWidgetOfExactType<_OrbitScopeInherited<T>>();
+      if (element != null) {
+        return (element.widget as _OrbitScopeInherited<T>).store;
+      }
+    }
+    return Orbit.use<T>(_create);
   }
 }
 

@@ -1,0 +1,5 @@
+[DONE] Complex Async & Caching: Added FutureProvider, StreamProvider, AsyncValue with caching and safe concurrency checks.
+[DONE] Combining State: Added ComputedStore and watch() with automatic subscription tracking and reset recovery.
+[DONE] Handling Side Effects: Added safe debounce() and throttle() directly to OrbitStore with auto-disposal timer safety.
+[SETTLED] Lifecycle Management (autoDispose): Confirmed Option A (global stores remain persistent for anytime access, while scoped stores are automatically managed and disposed by OrbitScope).
+[DONE] Compile-time Safety: Added OrbitStoreRef.of() and BuildContext overloads, providing safe fallback lookups.

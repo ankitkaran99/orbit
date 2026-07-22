@@ -1,3 +1,10 @@
+## 0.3.0
+
+- Added Async & Caching support (`FutureProvider`, `StreamProvider`, and `AsyncValue`).
+- Added declarative combining state (`ComputedStore`) and imperative store watching (`watch()`) with automatic subscription tracking and recovery.
+- Added built-in side-effect helpers (`debounce()` and `throttle()`) directly on `OrbitStore` with safety error-isolation.
+- Added compile-time safe lookups (`OrbitStoreRef.of` and context overloads) with fallback to global singletons to prevent runtime crashes.
+
 ## 0.2.2
 
 - Updated package homepage, repository, and issue tracker URLs to valid repo (`https://github.com/ankitkaran99/orbit`).

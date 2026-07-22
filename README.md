@@ -237,7 +237,175 @@ if (!userStore.isReady) {
 
 ---
 
-### 7. Mutation Middleware & Debugging
+### 7. Async & Caching Support (`FutureProvider`, `StreamProvider`, `AsyncValue`)
+
+Orbit provides native support for handling asynchronous data states with built-in caching. You can subclass `FutureProvider` and `StreamProvider` as store classes, which allows you to define custom actions and computed values alongside your async states.
+
+#### The `AsyncValue` State Wrapper
+A sealed class representing the three states of an asynchronous operation:
+- **`AsyncLoading`**: The operation is in progress.
+- **`AsyncData(value)`**: The operation succeeded and holds the data.
+- **`AsyncError(error, stackTrace)`**: The operation failed.
+
+Use the `when` method to map these states directly to widgets:
+
+```dart
+// In your Widget tree:
+userStore.builder(
+  builder: (context, store, _) => store.state.when(
+    data: (user) => Text('Hello ${user.name}'),
+    loading: () => const CircularProgressIndicator(),
+    error: (err, stack) => Text('Error loading user: $err'),
+  ),
+);
+```
+
+#### `FutureProvider<T>` Store Class
+An `OrbitStore` that handles a `Future`. It automatically runs the future on first access, caches the result, and transitions the state from `AsyncLoading` to `AsyncData` or `AsyncError`.
+
+You can subclass `FutureProvider` to create custom stores with additional async actions:
+
+```dart
+class UserProfileStore extends FutureProvider<User> {
+  UserProfileStore(this.api, this.userId) : super(() => api.fetchUser(userId));
+
+  final ApiService api;
+  final String userId;
+
+  // Custom action that performs a write, then refreshes the future cache
+  Future<void> updateBio(String bio) async {
+    await api.updateBio(userId, bio);
+    await refresh(); // Re-runs the future and updates state
+  }
+}
+
+// Define the store once for global access:
+final userStore = defineStore(() => UserProfileStore(apiService, 'user-123'));
+```
+
+Use `store.refresh()` to trigger a reload (this transitions state back to `AsyncLoading` and re-runs the future):
+```dart
+ElevatedButton(
+  onPressed: () => context.orbitRead<UserProfileStore>().refresh(),
+  child: const Text('Refresh Profile'),
+)
+```
+
+#### `StreamProvider<T>` Store Class
+An `OrbitStore` that listens to a `Stream`. It updates its state as the stream emits values or errors, and automatically cancels its subscription when the store is disposed (e.g. when an `OrbitScope` is unmounted).
+
+You can subclass `StreamProvider` to add custom sending actions:
+
+```dart
+class ChatStore extends StreamProvider<List<Message>> {
+  ChatStore(this.chatService) : super(() => chatService.streamMessages());
+
+  final ChatService chatService;
+
+  // Custom action to send message and wait for stream updates
+  Future<void> sendMessage(String text) async {
+    await chatService.send(text);
+  }
+}
+
+// Define the store:
+final chatStore = defineStore(() => ChatStore(chatService));
+```
+
+---
+
+### 8. Combining State (`ComputedStore`, `watch`)
+
+Orbit provides native ways for stores to watch other stores, allowing you to combine state and react to changes either declaratively or imperatively.
+
+#### Declarative: `ComputedStore<T>`
+Ideal for read-only reactive derived values (analogous to Riverpod's `Provider`). It automatically tracks which stores are read inside its compute function and updates itself when any of its dependencies change:
+
+```dart
+final todoListStore = defineStore(() => TodoListStore());
+final filterStore = defineStore(() => FilterStore());
+
+final filteredTodosStore = defineStore(() => ComputedStore<List<Todo>>((watch) {
+  final todos = watch(todoListStore).todos;
+  final filter = watch(filterStore).filter;
+  return todos.where((t) => t.matches(filter)).toList();
+}));
+
+// In your Widget tree, use it just like any other store:
+filteredTodosStore.builder(
+  builder: (context, store, _) => ListView(
+    children: store.state.map((t) => TodoWidget(t)).toList(),
+  ),
+);
+```
+
+#### Imperative: `OrbitStore.watch`
+For stateful stores, you can use the built-in `watch()` method to listen to changes on other stores. Orbit handles the subscription cleanup automatically when the watching store is disposed:
+
+```dart
+class SearchServiceStore extends OrbitStore {
+  List<Result> results = [];
+
+  @override
+  void init() {
+    watch(searchQueryStore, (queryStore) async {
+      final query = queryStore.query;
+      final newResults = await api.search(query);
+      mutate(() {
+        results = newResults;
+      });
+    });
+  }
+}
+```
+
+---
+
+### 9. Side Effect Helpers (`debounce`, `throttle`)
+
+Orbit provides built-in, memory-safe debouncing and throttling helpers directly on the `OrbitStore` class. These make it simple to implement common UI patterns (like search-as-you-type and submit rate-limiting) without worrying about manual timers or memory leaks.
+
+#### Debounce
+Delays execution of an action until a specified duration of inactivity has passed. Subsequent calls with the same `id` cancel the pending timer and schedule a new one:
+
+```dart
+class SearchStore extends OrbitStore {
+  String query = '';
+  List<Result> results = [];
+
+  void updateQuery(String newQuery) {
+    query = newQuery;
+    
+    // Wait 300ms of inactivity before firing the API request
+    debounce('search_query', const Duration(milliseconds: 300), () async {
+      final res = await api.search(query);
+      mutate(() {
+        results = res;
+      });
+    });
+  }
+}
+```
+
+#### Throttle
+Executes an action immediately (leading-edge) and rate-limits subsequent calls with the same `id`, ignoring them entirely during the throttle window:
+
+```dart
+class PaymentStore extends OrbitStore {
+  void submitPayment() {
+    // Prevent duplicate charges by ignoring clicks for 2 seconds
+    throttle('submit_payment', const Duration(seconds: 2), () async {
+      await api.chargeUser();
+    });
+  }
+}
+```
+
+Active timers are **automatically cancelled** when the store is disposed (e.g., when an `OrbitScope` is unmounted), guaranteeing that callback side-effects will never fire on a disposed store.
+
+---
+
+### 10. Mutation Middleware & Debugging
 
 Register middleware to observe all mutations across all stores (ideal for logging, analytics, and offline persistence):
 
@@ -269,7 +437,37 @@ Orbit.debugLogging = false;       // Turn off debug logging
 
 ---
 
-### 8. Testing & Mocking
+### 11. Compile-time Safety & Safe Lookups
+
+Orbit prioritizes compile-time safety to prevent common state management bugs like `ProviderNotFoundException` or runtime lookup crashes. By utilizing `OrbitStoreRef` (returned from `defineStore`), you get crash-free context lookups.
+
+#### Safe Fallback Lookups (`storeRef.of(context)`)
+Instead of accessing stores by generic types, use your defined store reference to perform lookups. If a scoped store exists in an ancestor `OrbitScope`, it is resolved and subscribed to. If not, it automatically falls back to the global singleton (instantiating it on-the-fly if necessary).
+
+This guarantees that the lookup will **never** throw a runtime exception:
+
+```dart
+// 1. Compile-time safe lookup (resolves scoped or falls back to global singleton)
+final store = counterStore.of(context);
+
+// 2. Read-only lookup (inside callbacks like onPressed, no rebuild dependency)
+final storeRead = counterStore.of(context, listen: false);
+```
+
+#### BuildContext Overloads
+The standard `BuildContext` extensions can also accept `OrbitStoreRef` parameters directly for type-safe, crash-free resolution with type inference:
+
+```dart
+// Subscribes context to store updates:
+final store = context.orbit(counterStore);
+
+// Read-only access:
+final storeRead = context.orbitRead(counterStore);
+```
+
+---
+
+### 12. Testing & Mocking
 
 Swap stores with mock or fake implementations for widget testing:
 
@@ -297,7 +495,11 @@ void main() {
 | Class / Method | Description |
 | :--- | :--- |
 | `OrbitStore` | Base store class with private state, `@protected mutate<R>()`, `init()`, `onDispose()`, and `onResume()`. |
+| `OrbitStore.watch(storeRef, onChange)` | Subscribes a store to changes in another global store and cleans up automatically on dispose. |
+| `OrbitStore.debounce(id, duration, action)` | Executes an action after a specified duration of inactivity. Cancels pending execution when called again. |
+| `OrbitStore.throttle(id, duration, action)` | Executes an action immediately and ignores subsequent calls for the specified duration. |
 | `defineStore(factory)` | Defines a typed reference (`OrbitStoreRef<T>`) to a global store. |
+| `OrbitStoreRef.of(context)` | Type-safe, crash-free lookup that returns scoped store or falls back to global singleton. |
 | `OrbitBuilder<T>` | Listens to store `T` and rebuilds on change. Supports `child` subtree caching. |
 | `OrbitSelector<T, S>` | Listens to store `T` and rebuilds only when `selector(store)` value changes. Supports `equals`. |
 | `OrbitScope<T>` | Scopes a store instance to a widget subtree. |
@@ -309,6 +511,10 @@ void main() {
 | `Orbit.reset<T>()` / `resetAll()` | Disposes and removes registered store(s). |
 | `Orbit.observe(callback)` | Registers global mutation middleware. |
 | `Orbit.changeLog` | Holds the last 200 mutations recorded during debug mode. |
+| `FutureProvider<T>` | An `OrbitStore` that handles a `Future`, automatically caching its value and exposing state as an `AsyncValue`. |
+| `StreamProvider<T>` | An `OrbitStore` that listens to a `Stream`, automatically updates its state, and cancels subscription when disposed. |
+| `AsyncValue<T>` | A sealed class representing an async data state (`AsyncLoading`, `AsyncData`, `AsyncError`). Provides `when()` to map states. |
+| `ComputedStore<T>` | An `OrbitStore` that computes derived, read-only state by watching other stores and re-evaluating when dependencies change. |
 
 ---
 

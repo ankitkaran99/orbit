@@ -16,7 +16,8 @@ class CounterStore extends OrbitStore {
 
   R runMutate<R>(R Function() action) => mutate(action);
 
-  Future<R> runMutateAsync<R>(Future<R> Function() action) => mutateAsync(action);
+  Future<R> runMutateAsync<R>(Future<R> Function() action) =>
+      mutateAsync(action);
 
   Future<void> incrementAsync() async {
     await mutateAsync(() async {
@@ -93,8 +94,7 @@ void main() {
       expect(notified, 1);
     });
 
-    test('mutateAsync() notifies once the awaited action completes',
-        () async {
+    test('mutateAsync() notifies once the awaited action completes', () async {
       final store = Orbit.use<CounterStore>(() => CounterStore());
       var notified = 0;
       store.addListener(() => notified++);
@@ -105,7 +105,8 @@ void main() {
       expect(notified, 1);
     });
 
-    test('reset() disposes the store, runs onDispose(), and clears the '
+    test(
+        'reset() disposes the store, runs onDispose(), and clears the '
         'singleton', () {
       final store = Orbit.use<CounterStore>(() => CounterStore());
       Orbit.reset<CounterStore>();
@@ -120,8 +121,7 @@ void main() {
       expect(Orbit.read<CounterStore>(), isNull);
     });
 
-    test('override() swaps in a fake store, disposing the previous one',
-        () {
+    test('override() swaps in a fake store, disposing the previous one', () {
       final real = Orbit.use<CounterStore>(() => CounterStore());
 
       Orbit.override<CounterStore>(CounterStore());
@@ -172,7 +172,8 @@ void main() {
       expect(a.initCalls, 1);
     });
 
-    test('an async init() leaves the store usable immediately, '
+    test(
+        'an async init() leaves the store usable immediately, '
         'ready completes once it finishes', () async {
       final store = Orbit.use<AsyncInitStore>(() => AsyncInitStore());
       expect(store.loaded, isFalse);
@@ -216,7 +217,8 @@ void main() {
   });
 
   group('debug logging & observe()', () {
-    test('mutate() records a change with a diff when debugSnapshot '
+    test(
+        'mutate() records a change with a diff when debugSnapshot '
         'is overridden', () {
       Orbit.debugLogging = true;
       final store = Orbit.use<CounterStore>(() => CounterStore());
@@ -244,8 +246,7 @@ void main() {
       expect(Orbit.changeLog.last.diff['count'], (249, 250));
     });
 
-    test('nothing is logged when debugLogging is off and no observers',
-        () {
+    test('nothing is logged when debugLogging is off and no observers', () {
       Orbit.debugLogging = false;
       final store = Orbit.use<CounterStore>(() => CounterStore());
       Orbit.clearChangeLog();
@@ -255,8 +256,7 @@ void main() {
       expect(Orbit.changeLog, isEmpty);
     });
 
-    test('observe() fires for every mutation, even with debugLogging off',
-        () {
+    test('observe() fires for every mutation, even with debugLogging off', () {
       Orbit.debugLogging = false;
       final store = Orbit.use<CounterStore>(() => CounterStore());
 
@@ -418,7 +418,8 @@ void main() {
       expect(received, hasLength(1));
     });
 
-    testWidgets('maybeOf returns null when no scope is present', (tester) async {
+    testWidgets('maybeOf returns null when no scope is present',
+        (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Builder(builder: (context) {
@@ -447,7 +448,8 @@ void main() {
       expect(() => store.dispose(), returnsNormally);
     });
 
-    testWidgets('OrbitSelector updates when selector prop changes in parent rebuild',
+    testWidgets(
+        'OrbitSelector updates when selector prop changes in parent rebuild',
         (tester) async {
       int multiplier = 2;
 
@@ -506,7 +508,8 @@ void main() {
             child: Builder(builder: (context) {
               final store = context.orbit<CounterStore>();
               return TextButton(
-                onPressed: () => context.orbitRead<CounterStore>(ref).increment(),
+                onPressed: () =>
+                    context.orbitRead<CounterStore>(ref).increment(),
                 child: Text('Count: ${store.count}'),
               );
             }),
@@ -530,7 +533,8 @@ void main() {
           home: Column(
             children: [
               counterRef.builder(
-                builder: (context, store, child) => Text('Builder: ${store.count}'),
+                builder: (context, store, child) =>
+                    Text('Builder: ${store.count}'),
               ),
               counterRef.select<int>(
                 selector: (store) => store.doubleCount,
@@ -551,7 +555,9 @@ void main() {
       expect(find.text('Select: 2'), findsOneWidget);
     });
 
-    test('observer exceptions do not break remaining observers or store mutation', () {
+    test(
+        'observer exceptions do not break remaining observers or store mutation',
+        () {
       bool secondObserverRan = false;
 
       final unsubscribe1 = Orbit.observe((store, mutation) {
@@ -569,12 +575,14 @@ void main() {
       unsubscribe2();
     });
 
-    testWidgets('OrbitScope disposes store if init() throws synchronously', (tester) async {
+    testWidgets('OrbitScope disposes store if init() throws synchronously',
+        (tester) async {
       bool disposed = false;
 
       await tester.pumpWidget(
         OrbitScope<ScopeFailingInitStore>(
-          create: () => ScopeFailingInitStore(onDisposeCallback: () => disposed = true),
+          create: () =>
+              ScopeFailingInitStore(onDisposeCallback: () => disposed = true),
           child: const SizedBox.shrink(),
         ),
       );
@@ -582,6 +590,487 @@ void main() {
       final dynamic error = tester.takeException();
       expect(error, isA<StateError>());
       expect(disposed, isTrue);
+    });
+  });
+
+  group('AsyncValue', () {
+    test('AsyncValue.data constructor and properties', () {
+      const val = AsyncValue.data(42);
+      expect(val.isLoading, isFalse);
+      expect(val.hasValue, isTrue);
+      expect(val.hasError, isFalse);
+      expect(val.valueOrNull, 42);
+      expect(val.toString(), 'AsyncData(42)');
+      expect(val, const AsyncData(42));
+      expect(val.hashCode, const AsyncData(42).hashCode);
+    });
+
+    test('AsyncValue.loading constructor and properties', () {
+      const val = AsyncValue.loading();
+      expect(val.isLoading, isTrue);
+      expect(val.hasValue, isFalse);
+      expect(val.hasError, isFalse);
+      expect(val.valueOrNull, isNull);
+      expect(val.toString(), 'AsyncLoading()');
+      expect(val, const AsyncLoading());
+      expect(val.hashCode, const AsyncLoading().hashCode);
+    });
+
+    test('AsyncValue.error constructor and properties', () {
+      final exception = Exception('fail');
+      final stackTrace = StackTrace.current;
+      final val = AsyncValue.error(exception, stackTrace);
+      expect(val.isLoading, isFalse);
+      expect(val.hasValue, isFalse);
+      expect(val.hasError, isTrue);
+      expect(val.valueOrNull, isNull);
+      expect(val.toString(), 'AsyncError(Exception: fail)');
+      expect(val, AsyncError(exception, stackTrace));
+      expect(val.hashCode, AsyncError(exception, stackTrace).hashCode);
+    });
+
+    test('AsyncValue.when maps states correctly', () {
+      const loadingVal = AsyncValue<int>.loading();
+      expect(
+        loadingVal.when(
+          data: (d) => 'data $d',
+          loading: () => 'loading',
+          error: (e, s) => 'error',
+        ),
+        'loading',
+      );
+
+      const dataVal = AsyncValue.data(123);
+      expect(
+        dataVal.when(
+          data: (d) => 'data $d',
+          loading: () => 'loading',
+          error: (e, s) => 'error',
+        ),
+        'data 123',
+      );
+
+      final errorVal = AsyncValue<int>.error('err');
+      expect(
+        errorVal.when(
+          data: (d) => 'data $d',
+          loading: () => 'loading',
+          error: (e, s) => 'error $e',
+        ),
+        'error err',
+      );
+    });
+  });
+
+  group('FutureProvider', () {
+    test('resolves future successfully', () async {
+      final completer = Completer<String>();
+      final provider = FutureProvider<String>(() => completer.future);
+
+      expect(provider.state.isLoading, isTrue);
+
+      Orbit.use<FutureProvider<String>>(() => provider);
+
+      completer.complete('hello');
+      await provider.ready;
+
+      expect(provider.state.hasValue, isTrue);
+      expect(provider.state.valueOrNull, 'hello');
+    });
+
+    test('handles errors and allows refresh()', () async {
+      var callCount = 0;
+      final provider = FutureProvider<int>(() async {
+        callCount++;
+        if (callCount == 1) {
+          throw StateError('failed first time');
+        }
+        return 42;
+      });
+
+      Orbit.use<FutureProvider<int>>(() => provider);
+
+      await expectLater(provider.ready, throwsStateError);
+      expect(provider.state.hasError, isTrue);
+      expect(provider.state.isLoading, isFalse);
+
+      await provider.refresh();
+      expect(provider.state.hasValue, isTrue);
+      expect(provider.state.valueOrNull, 42);
+      expect(callCount, 2);
+    });
+
+    test('ignores stale concurrent refresh calls', () async {
+      final completers = <Completer<int>>[];
+      final provider = FutureProvider<int>(() {
+        final c = Completer<int>();
+        completers.add(c);
+        return c.future;
+      });
+
+      Orbit.use<FutureProvider<int>>(() => provider);
+
+      final secondRefresh = provider.refresh();
+
+      expect(completers, hasLength(2));
+
+      completers[0].complete(100);
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.state.isLoading, isTrue);
+
+      completers[1].complete(200);
+      await secondRefresh;
+      expect(provider.state.valueOrNull, 200);
+    });
+  });
+
+  group('StreamProvider', () {
+    test('subscribes and updates values over time', () async {
+      final controller = StreamController<int>();
+      final provider = StreamProvider<int>(() => controller.stream);
+
+      Orbit.use<StreamProvider<int>>(() => provider);
+      expect(provider.state.isLoading, isTrue);
+
+      controller.add(1);
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.state.valueOrNull, 1);
+
+      controller.add(2);
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.state.valueOrNull, 2);
+
+      await controller.close();
+    });
+
+    test('handles stream errors and cancels on dispose', () async {
+      final controller = StreamController<int>();
+      final provider = StreamProvider<int>(() => controller.stream);
+
+      Orbit.use<StreamProvider<int>>(() => provider);
+
+      controller.addError('error msg');
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.state.hasError, isTrue);
+
+      provider.dispose();
+      expect(controller.hasListener, isFalse);
+
+      await controller.close();
+    });
+
+    test('supports refresh() to re-subscribe', () async {
+      var callCount = 0;
+      final provider = StreamProvider<int>(() {
+        callCount++;
+        return Stream.value(callCount);
+      });
+
+      Orbit.use<StreamProvider<int>>(() => provider);
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.state.valueOrNull, 1);
+
+      provider.refresh();
+      expect(provider.state.isLoading, isTrue);
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.state.valueOrNull, 2);
+      expect(callCount, 2);
+    });
+
+    test('handles synchronous stream factory errors', () async {
+      final provider = StreamProvider<int>(() {
+        throw StateError('sync stream error');
+      });
+
+      Orbit.use<StreamProvider<int>>(() => provider);
+      expect(provider.state.hasError, isTrue);
+      expect(provider.state.toString(), contains('sync stream error'));
+    });
+  });
+
+  group('ComputedStore', () {
+    test('computes initial state and reacts to updates', () {
+      final source = defineStore(() => CounterStore());
+      final computed = defineStore(() => ComputedStore<int>((watch) {
+            final src = watch(source);
+            return src.count * 10;
+          }));
+
+      expect(computed().state, 0);
+
+      source().increment();
+      expect(computed().state, 10);
+
+      source().increment();
+      expect(computed().state, 20);
+    });
+
+    test('cleans up dependency listeners when disposed', () {
+      final source = defineStore(() => CounterStore());
+      final computed = ComputedStore<int>((watch) {
+        final src = watch(source);
+        return src.count;
+      });
+
+      Orbit.use<ComputedStore<int>>(() => computed);
+      expect(computed.state, 0);
+
+      computed.dispose();
+
+      source().increment();
+      expect(computed.state, 0);
+    });
+
+    test('correctly records diffs in Orbit change log', () {
+      Orbit.debugLogging = true;
+      final source = defineStore(() => CounterStore());
+      final computed = defineStore(() => ComputedStore<int>((watch) {
+            final src = watch(source);
+            return src.count * 5;
+          }));
+
+      computed();
+      Orbit.clearChangeLog();
+
+      source().increment();
+
+      expect(Orbit.changeLog, hasLength(2));
+      final computedChange = Orbit.changeLog.first;
+      expect(computedChange.store, same(computed()));
+      expect(computedChange.action, 'recompute');
+      expect(computedChange.diff, {'state': (0, 5)});
+    });
+
+    test('handles dependency reset/override correctly', () {
+      final source = defineStore(() => CounterStore());
+      final computed = defineStore(() => ComputedStore<int>((watch) {
+            final src = watch(source);
+            return src.count;
+          }));
+
+      expect(computed().state, 0);
+
+      source().increment();
+      expect(computed().state, 1);
+
+      Orbit.reset<CounterStore>();
+
+      expect(computed().state, 0);
+
+      source().increment();
+      expect(computed().state, 1);
+    });
+  });
+
+  group('OrbitStore.watch', () {
+    test('subscribes to updates and unsubscribes on dispose', () {
+      final source = defineStore(() => CounterStore());
+      var triggerCount = 0;
+      var lastValue = -1;
+
+      final watcher = Orbit.use<WatcherStore>(() => WatcherStore(source, (val) {
+            triggerCount++;
+            lastValue = val;
+          }));
+
+      source().increment();
+      expect(triggerCount, 1);
+      expect(lastValue, 1);
+
+      watcher.dispose();
+
+      source().increment();
+      expect(triggerCount, 1);
+    });
+  });
+
+  group('OrbitStore.debounce', () {
+    test('postpones execution and runs only once for consecutive calls',
+        () async {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      var callCount = 0;
+
+      store.debounce('test_deb', const Duration(milliseconds: 10), () {
+        callCount++;
+      });
+      store.debounce('test_deb', const Duration(milliseconds: 10), () {
+        callCount++;
+      });
+      store.debounce('test_deb', const Duration(milliseconds: 10), () {
+        callCount++;
+      });
+
+      expect(callCount, 0);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(callCount, 1);
+    });
+
+    test('cancels timer and does not fire if store is disposed', () async {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      var fired = false;
+
+      store.debounce('test_deb', const Duration(milliseconds: 10), () {
+        fired = true;
+      });
+
+      store.dispose();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(fired, isFalse);
+    });
+
+    test('reports async errors to FlutterError', () async {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      final errors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) => errors.add(details);
+
+      try {
+        store.debounce('test_deb', const Duration(milliseconds: 10), () {
+          throw StateError('debounced error');
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(errors, hasLength(1));
+        expect(errors.first.exception, isA<StateError>());
+        expect(errors.first.context.toString(),
+            contains('inside debounced action'));
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
+    });
+  });
+
+  group('OrbitStore.throttle', () {
+    test('executes immediately and rate-limits subsequent calls', () async {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      var callCount = 0;
+
+      store.throttle('test_throt', const Duration(milliseconds: 10), () {
+        callCount++;
+      });
+      store.throttle('test_throt', const Duration(milliseconds: 10), () {
+        callCount++;
+      });
+      store.throttle('test_throt', const Duration(milliseconds: 10), () {
+        callCount++;
+      });
+
+      expect(callCount, 1);
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      store.throttle('test_throt', const Duration(milliseconds: 10), () {
+        callCount++;
+      });
+      expect(callCount, 2);
+    });
+
+    test('reports synchronous and asynchronous errors to FlutterError',
+        () async {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      final errors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) => errors.add(details);
+
+      try {
+        store.throttle('test_throt_err1', const Duration(milliseconds: 10), () {
+          throw StateError('throttled sync error');
+        });
+
+        store.throttle('test_throt_err2', const Duration(milliseconds: 10),
+            () async {
+          throw StateError('throttled async error');
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(errors, hasLength(2));
+        expect(
+            errors[0].exception.toString(), contains('throttled sync error'));
+        expect(
+            errors[1].exception.toString(), contains('throttled async error'));
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
+    });
+  });
+
+  group('Compile-time Safety Lookups', () {
+    testWidgets(
+        'OrbitStoreRef.of falls back to global singleton when no scope exists',
+        (tester) async {
+      final counterStore = defineStore(() => CounterStore());
+
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: Builder(
+          builder: (context) {
+            final store = counterStore.of(context);
+            return Text('Count: ${store.count}');
+          },
+        ),
+      ));
+
+      expect(find.text('Count: 0'), findsOneWidget);
+    });
+
+    testWidgets(
+        'OrbitStoreRef.of resolves to scoped store and listens to changes',
+        (tester) async {
+      final counterStore = defineStore(() => CounterStore());
+
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: OrbitScope<CounterStore>(
+          create: () => CounterStore(),
+          child: Builder(
+            builder: (context) {
+              final store = counterStore.of(context);
+              return Text('Count: ${store.count}');
+            },
+          ),
+        ),
+      ));
+
+      expect(find.text('Count: 0'), findsOneWidget);
+
+      final scopedStore =
+          OrbitScope.of<CounterStore>(tester.element(find.byType(Builder)));
+      scopedStore.increment();
+      await tester.pump();
+
+      expect(find.text('Count: 1'), findsOneWidget);
+    });
+
+    testWidgets(
+        'context.orbit(storeRef) and context.orbitRead(storeRef) work correctly',
+        (tester) async {
+      final counterStore = defineStore(() => CounterStore());
+
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: OrbitScope<CounterStore>(
+          create: () => CounterStore(),
+          child: Builder(
+            builder: (context) {
+              final store = context.orbit(counterStore);
+              return GestureDetector(
+                onTap: () {
+                  final readStore = context.orbitRead(counterStore);
+                  readStore.increment();
+                },
+                child: Text('Count: ${store.count}'),
+              );
+            },
+          ),
+        ),
+      ));
+
+      expect(find.text('Count: 0'), findsOneWidget);
+
+      await tester.tap(find.text('Count: 0'));
+      await tester.pump();
+
+      expect(find.text('Count: 1'), findsOneWidget);
     });
   });
 }
@@ -598,4 +1087,17 @@ class ScopeFailingInitStore extends OrbitStore {
 
   @override
   void onDispose() => onDisposeCallback();
+}
+
+class WatcherStore extends OrbitStore {
+  WatcherStore(this.sourceRef, this.onTrigger);
+  final OrbitStoreRef<CounterStore> sourceRef;
+  final void Function(int value) onTrigger;
+
+  @override
+  void init() {
+    watch(sourceRef, (store) {
+      onTrigger(store.count);
+    });
+  }
 }

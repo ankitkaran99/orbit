@@ -59,8 +59,9 @@ class OrbitMutation {
 
   @override
   String toString() {
-    final label =
-        action == null ? '${store.runtimeType}' : '${store.runtimeType}.$action';
+    final label = action == null
+        ? '${store.runtimeType}'
+        : '${store.runtimeType}.$action';
     final buffer = StringBuffer('[Orbit] $label');
     if (before != null && after != null) {
       final changed = diff;
@@ -68,7 +69,8 @@ class OrbitMutation {
           ? ' (no field changes)'
           : ' \u2014 ${changed.entries.map((e) => '${e.key}: ${e.value.$1} \u2192 ${e.value.$2}').join(', ')}');
     }
-    buffer.write(' \u2014 notified $listenerCount listener${listenerCount == 1 ? '' : 's'}');
+    buffer.write(
+        ' \u2014 notified $listenerCount listener${listenerCount == 1 ? '' : 's'}');
     return buffer.toString();
   }
 }

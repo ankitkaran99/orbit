@@ -84,11 +84,13 @@ class _OrbitSelectorState<T extends OrbitStore, S>
     final next = widget.selector(instance);
     final isEqual = widget.equals?.call(_value, next) ?? (_value == next);
     if (!isEqual && mounted) {
-      if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      if (SchedulerBinding.instance.schedulerPhase ==
+          SchedulerPhase.persistentCallbacks) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             final postNext = widget.selector(instance);
-            final postIsEqual = widget.equals?.call(_value, postNext) ?? (_value == postNext);
+            final postIsEqual =
+                widget.equals?.call(_value, postNext) ?? (_value == postNext);
             if (!postIsEqual) {
               setState(() => _value = postNext);
             }

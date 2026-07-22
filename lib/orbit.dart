@@ -21,3 +21,4 @@ part 'src/orbit_selector.dart';
 part 'src/orbit_define.dart';
 part 'src/orbit_scope.dart';
 part 'src/orbit_context.dart';
+part 'src/orbit_async.dart';

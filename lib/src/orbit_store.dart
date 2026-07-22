@@ -40,6 +40,8 @@ abstract class OrbitStore extends ChangeNotifier {
   bool _initStarted = false;
   int _listenerCount = 0;
   _OrbitLifecycleObserver? _lifecycleObserver;
+  final List<void Function()> _watchDisposers = [];
+  final Map<String, Timer> _activeTimers = {};
 
   final Completer<void> _readyCompleter = Completer<void>()
     ..future.catchError((_) {});
@@ -97,7 +99,19 @@ abstract class OrbitStore extends ChangeNotifier {
   String? _inferLabel(String? explicitLabel) {
     if (explicitLabel != null) return explicitLabel;
     try {
-      final frames = StackTrace.current.toString().split('\n');
+      var trace = StackTrace.current.toString();
+      var newlineCount = 0;
+      var index = 0;
+      while (newlineCount < 10 && index < trace.length) {
+        index = trace.indexOf('\n', index);
+        if (index == -1) break;
+        newlineCount++;
+        index++;
+      }
+      if (index != -1 && index < trace.length) {
+        trace = trace.substring(0, index);
+      }
+      final frames = trace.split('\n');
       for (final line in frames) {
         final match = _stackFrameRegExp.firstMatch(line);
         if (match == null) continue;
@@ -286,12 +300,103 @@ abstract class OrbitStore extends ChangeNotifier {
     _lifecycleObserver = null;
   }
 
+  /// Watches another global store and executes [onChange] whenever it notifies.
+  /// Automatically unsubscribes when this store is disposed.
+  void watch<S extends OrbitStore>(
+    OrbitStoreRef<S> storeRef,
+    void Function(S store) onChange,
+  ) {
+    final other = storeRef();
+    final listener = () => onChange(other);
+    other.addListener(listener);
+    _watchDisposers.add(() => other.removeListener(listener));
+  }
+
+  /// Debounces [action], executing it only after [duration] of inactivity.
+  ///
+  /// Subsequent calls with the same [id] cancel the pending timer and schedule a new one.
+  /// Automatically cancels active timers when the store is disposed.
+  void debounce(
+    String id,
+    Duration duration,
+    FutureOr<void> Function() action,
+  ) {
+    if (_disposed) return;
+    _activeTimers[id]?.cancel();
+    _activeTimers[id] = Timer(duration, () async {
+      _activeTimers.remove(id);
+      if (_disposed) return;
+      try {
+        await action();
+      } catch (exception, stackTrace) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: exception,
+          stack: stackTrace,
+          library: 'orbit',
+          context:
+              ErrorDescription('inside debounced action "$id" in $runtimeType'),
+        ));
+      }
+    });
+  }
+
+  /// Throttles [action], executing it immediately and rate-limiting subsequent calls to at most once per [duration].
+  ///
+  /// Subsequent calls with the same [id] within the duration are ignored.
+  /// Automatically cancels active timers when the store is disposed.
+  void throttle(
+    String id,
+    Duration duration,
+    FutureOr<void> Function() action,
+  ) {
+    if (_disposed) return;
+    if (_activeTimers.containsKey(id)) return;
+
+    // leading-edge: execute immediately
+    try {
+      final FutureOr<void> result = action();
+      if (result is Future<void>) {
+        result.catchError((Object exception, StackTrace stackTrace) {
+          FlutterError.reportError(FlutterErrorDetails(
+            exception: exception,
+            stack: stackTrace,
+            library: 'orbit',
+            context: ErrorDescription(
+                'inside throttled async action "$id" in $runtimeType'),
+          ));
+        });
+      }
+    } catch (exception, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: exception,
+        stack: stackTrace,
+        library: 'orbit',
+        context:
+            ErrorDescription('inside throttled action "$id" in $runtimeType'),
+      ));
+    }
+
+    _activeTimers[id] = Timer(duration, () {
+      _activeTimers.remove(id);
+    });
+  }
+
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
     _detachLifecycle();
     onDispose();
+    for (final timer in _activeTimers.values) {
+      timer.cancel();
+    }
+    _activeTimers.clear();
+    for (final dispose in _watchDisposers) {
+      try {
+        dispose();
+      } catch (_) {}
+    }
+    _watchDisposers.clear();
     super.dispose();
   }
 }
