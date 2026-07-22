@@ -1,4 +1,13 @@
+## 0.3.1
+
+- Fixed LICENSE file formatting to comply with standard SPDX MIT license template for correct pub.dev detection.
+- Fixed installation snippet and library imports in README.md.
+- Added state-management and flutter topics in pubspec.yaml.
+- Added GitHub Actions workflow CI verification.
+- Improved and extended correctness test suite (added tests for throttle disposal, conditional ComputedStore dependency tracking, and web stack trace label inference).
+
 ## 0.3.0
+
 
 - Added Async & Caching support (`FutureProvider`, `StreamProvider`, and `AsyncValue`).
 - Added declarative combining state (`ComputedStore`) and imperative store watching (`watch()`) with automatic subscription tracking and recovery.
