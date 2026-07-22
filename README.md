@@ -12,7 +12,7 @@ Add Orbit to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  orbit:
+  orbit_state:
     git:
       url: https://github.com/ankitkaran99/orbit.git
       ref: main
