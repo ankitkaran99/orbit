@@ -92,14 +92,16 @@ abstract class OrbitStore extends ChangeNotifier {
   }
 
   static final RegExp _stackFrameRegExp = RegExp(r'#\d+\s+([^\s\(]+)');
+  static final RegExp _jsStackFrameRegExp = RegExp(r'at\s+([^\s\(]+)');
+  static final RegExp _firefoxStackFrameRegExp = RegExp(r'^([^@\s]+)@');
   static final RegExp _anonymousClosureRegExp =
       RegExp(r'\.<anonymous closure>.*');
   static final RegExp _asyncRegExp = RegExp(r'\.<async>.*');
 
-  String? _inferLabel(String? explicitLabel) {
+  String? _inferLabel(String? explicitLabel, [StackTrace? testTrace]) {
     if (explicitLabel != null) return explicitLabel;
     try {
-      var trace = StackTrace.current.toString();
+      var trace = (testTrace ?? StackTrace.current).toString();
       var newlineCount = 0;
       var index = 0;
       while (newlineCount < 10 && index < trace.length) {
@@ -113,7 +115,9 @@ abstract class OrbitStore extends ChangeNotifier {
       }
       final frames = trace.split('\n');
       for (final line in frames) {
-        final match = _stackFrameRegExp.firstMatch(line);
+        var match = _stackFrameRegExp.firstMatch(line);
+        match ??= _jsStackFrameRegExp.firstMatch(line);
+        match ??= _firefoxStackFrameRegExp.firstMatch(line);
         if (match == null) continue;
         var symbol = match.group(1)!;
         if (symbol.startsWith('OrbitStore.') || symbol == 'OrbitStore') {
@@ -133,6 +137,13 @@ abstract class OrbitStore extends ChangeNotifier {
     } catch (_) {}
     return null;
   }
+
+  /// Exposed helper for testing label inference on custom stack traces.
+  @visibleForTesting
+  String? inferLabelForTest(String? explicitLabel, StackTrace trace) {
+    return _inferLabel(explicitLabel, trace);
+  }
+
 
   /// Runs [action], then notifies every listener that state changed.
   ///

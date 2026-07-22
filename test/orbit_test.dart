@@ -38,6 +38,11 @@ class CounterStore extends OrbitStore {
   void onDispose() => disposeCalls++;
 }
 
+class CounterStoreA extends CounterStore {}
+class CounterStoreB extends CounterStore {}
+class FlagStore extends CounterStore {}
+
+
 class FailingInitStore extends OrbitStore {
   int attempts = 0;
 
@@ -497,6 +502,42 @@ void main() {
       expect(Orbit.changeLog.single.action, 'increment');
     });
 
+    test('label inference supports JS, Firefox and obfuscated/empty stack traces', () {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+
+      // 1. VM stack trace format
+      final vmTrace = MockStackTrace(
+        '#0      OrbitStore.mutate (package:orbit/src/orbit_store.dart:100:5)\n'
+        '#1      CounterStore.increment (package:orbit/example/main.dart:20:10)\n'
+        '#2      main (package:orbit/example/main.dart:5:5)'
+      );
+      expect(store.inferLabelForTest(null, vmTrace), 'increment');
+
+      // 2. Chrome/V8 JS stack trace format
+      final chromeTrace = MockStackTrace(
+        'Error\n'
+        '    at CounterStore.mutate (http://localhost:8080/main.js:200:10)\n'
+        '    at CounterStore.increment (http://localhost:8080/main.js:100:5)\n'
+        '    at main (http://localhost:8080/main.js:5:2)'
+      );
+      expect(store.inferLabelForTest(null, chromeTrace), 'increment');
+
+      // 3. Firefox/Safari stack trace format
+      final firefoxTrace = MockStackTrace(
+        'mutate@http://localhost:8080/main.js:200:10\n'
+        'increment@http://localhost:8080/main.js:100:5\n'
+        'main@http://localhost:8080/main.js:5:2'
+      );
+      expect(store.inferLabelForTest(null, firefoxTrace), 'increment');
+
+      // 4. Obfuscated or unrecognizable stack trace (should fall back gracefully to null without crashing)
+      final obfuscatedTrace = MockStackTrace('wasm-function[1234]:0x123abc');
+      expect(store.inferLabelForTest(null, obfuscatedTrace), isNull);
+
+      // 5. Explicit label always overrides stack trace parsing
+      expect(store.inferLabelForTest('explicit', vmTrace), 'explicit');
+    });
+
     testWidgets('context.orbit and context.orbitRead access store correctly',
         (tester) async {
       final ref = defineStore(() => CounterStore());
@@ -860,6 +901,51 @@ void main() {
       source().increment();
       expect(computed().state, 1);
     });
+
+    test('handles conditional dependencies dynamically and does not leak or fail', () {
+      final flagStore = defineStore(() => FlagStore());
+      final storeA = defineStore(() => CounterStoreA());
+      final storeB = defineStore(() => CounterStoreB());
+
+      var computeCount = 0;
+      final computed = defineStore(() => ComputedStore<int>((watch) {
+            computeCount++;
+            final useA = watch(flagStore).count > 0;
+            if (useA) {
+              return watch(storeA).count;
+            } else {
+              return watch(storeB).count;
+            }
+          }));
+
+      expect(computed().state, 0);
+      expect(computeCount, 1);
+
+      // Changing storeA (not currently watched) should NOT trigger recompute
+      storeA().increment();
+      expect(computed().state, 0);
+      expect(computeCount, 1);
+
+      // Changing storeB (currently watched) should trigger recompute
+      storeB().increment();
+      expect(computed().state, 1);
+      expect(computeCount, 2);
+
+      // Flip flag: flagStore.count = 1 -> now uses storeA
+      flagStore().increment();
+      expect(computed().state, 1); // storeA has count 1
+      expect(computeCount, 3);
+
+      // Changing storeB (no longer watched) should NOT trigger recompute
+      storeB().increment();
+      expect(computed().state, 1);
+      expect(computeCount, 3);
+
+      // Changing storeA (now watched) should trigger recompute
+      storeA().increment();
+      expect(computed().state, 2);
+      expect(computeCount, 4);
+    });
   });
 
   group('OrbitStore.watch', () {
@@ -992,6 +1078,29 @@ void main() {
         FlutterError.onError = originalOnError;
       }
     });
+
+    test('cancels active timers and does not fire or leak if store is disposed', () async {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      var fired = false;
+
+      // First call executes immediately (leading edge)
+      store.throttle('test_throt', const Duration(milliseconds: 10), () {
+        fired = true;
+      });
+      expect(fired, isTrue);
+
+      fired = false;
+      store.dispose();
+
+      // Subsequent call after dispose should not fire
+      store.throttle('test_throt', const Duration(milliseconds: 10), () {
+        fired = true;
+      });
+      expect(fired, isFalse);
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(fired, isFalse);
+    });
   });
 
   group('Compile-time Safety Lookups', () {
@@ -1100,4 +1209,11 @@ class WatcherStore extends OrbitStore {
       onTrigger(store.count);
     });
   }
+}
+
+class MockStackTrace implements StackTrace {
+  MockStackTrace(this._trace);
+  final String _trace;
+  @override
+  String toString() => _trace;
 }

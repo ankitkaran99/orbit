@@ -6,6 +6,10 @@ version: 0.3.0
 homepage: https://github.com/ankitkaran99/orbit
 repository: https://github.com/ankitkaran99/orbit
 issue_tracker: https://github.com/ankitkaran99/orbit/issues
+topics:
+  - state-management
+  - flutter
+
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

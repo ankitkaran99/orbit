@@ -1,5 +1,7 @@
 # Orbit
 
+[![Flutter CI](https://github.com/ankitkaran99/orbit/actions/workflows/flutter.yml/badge.svg)](https://github.com/ankitkaran99/orbit/actions/workflows/flutter.yml)
+
 A tiny Flutter state management library built around Flutter's own strengths — zero external dependencies, zero code generation, zero boilerplate.
 
 Built entirely on Flutter SDK primitives: `ChangeNotifier`, `AnimatedBuilder`, and `InheritedNotifier` (the same primitives that power `AnimationController`, `ValueNotifier`, and `Theme.of(context)`).
@@ -12,10 +14,7 @@ Add Orbit to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  orbit_state:
-    git:
-      url: https://github.com/ankitkaran99/orbit.git
-      ref: main
+  orbit_state: ^0.3.0
 ```
 
 ---
@@ -29,7 +28,7 @@ Store state is kept in **private fields** exposed via **public getters**. State 
 Computed values are plain Dart getters — no special syntax required.
 
 ```dart
-import 'package:orbit/orbit.dart';
+import 'package:orbit_state/orbit.dart';
 
 class CounterStore extends OrbitStore {
   int _count = 0;
@@ -174,7 +173,7 @@ if (existing != null) {
 
 ---
 
-### 5. Scoped Stores (`OrbitScope`)
+### 6. Scoped Stores (`OrbitScope`)
 
 While global singletons are the default, `OrbitScope` lets you instantiate independent store instances bound to a widget subtree (ideal for modal dialogs, tab screens, or reusable components):
 
@@ -198,7 +197,7 @@ final maybeFormStore = OrbitScope.maybeOf<FormStore>(context, listen: false);
 
 ---
 
-### 6. Lifecycle Hooks (`init`, `onDispose`, `onResume`)
+### 7. Lifecycle Hooks (`init`, `onDispose`, `onResume`)
 
 Override lifecycle methods directly inside your `OrbitStore`:
 
@@ -237,7 +236,7 @@ if (!userStore.isReady) {
 
 ---
 
-### 7. Async & Caching Support (`FutureProvider`, `StreamProvider`, `AsyncValue`)
+### 8. Async & Caching Support (`FutureProvider`, `StreamProvider`, `AsyncValue`)
 
 Orbit provides native support for handling asynchronous data states with built-in caching. You can subclass `FutureProvider` and `StreamProvider` as store classes, which allows you to define custom actions and computed values alongside your async states.
 
@@ -314,7 +313,7 @@ final chatStore = defineStore(() => ChatStore(chatService));
 
 ---
 
-### 8. Combining State (`ComputedStore`, `watch`)
+### 9. Combining State (`ComputedStore`, `watch`)
 
 Orbit provides native ways for stores to watch other stores, allowing you to combine state and react to changes either declaratively or imperatively.
 
@@ -361,7 +360,7 @@ class SearchServiceStore extends OrbitStore {
 
 ---
 
-### 9. Side Effect Helpers (`debounce`, `throttle`)
+### 10. Side Effect Helpers (`debounce`, `throttle`)
 
 Orbit provides built-in, memory-safe debouncing and throttling helpers directly on the `OrbitStore` class. These make it simple to implement common UI patterns (like search-as-you-type and submit rate-limiting) without worrying about manual timers or memory leaks.
 
@@ -405,7 +404,7 @@ Active timers are **automatically cancelled** when the store is disposed (e.g., 
 
 ---
 
-### 10. Mutation Middleware & Debugging
+### 11. Mutation Middleware & Debugging
 
 Register middleware to observe all mutations across all stores (ideal for logging, analytics, and offline persistence):
 
@@ -437,7 +436,7 @@ Orbit.debugLogging = false;       // Turn off debug logging
 
 ---
 
-### 11. Compile-time Safety & Safe Lookups
+### 12. Compile-time Safety & Safe Lookups
 
 Orbit prioritizes compile-time safety to prevent common state management bugs like `ProviderNotFoundException` or runtime lookup crashes. By utilizing `OrbitStoreRef` (returned from `defineStore`), you get crash-free context lookups.
 
@@ -467,7 +466,7 @@ final storeRead = context.orbitRead(counterStore);
 
 ---
 
-### 12. Testing & Mocking
+### 13. Testing & Mocking
 
 Swap stores with mock or fake implementations for widget testing:
 
