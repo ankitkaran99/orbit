@@ -2,7 +2,7 @@
   "Orbit Store": {
     "prefix": "os-store",
     "body": [
-      "import 'package:orbit/orbit.dart';",
+      "import 'package:orbit_state/orbit.dart';",
       "",
       "class ${1:Counter}Store extends OrbitStore {",
       "  ${2:int} _${3:value} = ${4:0};",
@@ -24,7 +24,7 @@
     "prefix": "os-store-full",
     "body": [
       "import 'dart:async';",
-      "import 'package:orbit/orbit.dart';",
+      "import 'package:orbit_state/orbit.dart';",
       "",
       "class ${1:User}Store extends OrbitStore {",
       "  ${2:bool} _${3:isLoading} = false;",
@@ -167,6 +167,53 @@
       "});"
     ],
     "description": "Inserts an Orbit.observe mutation listener middleware"
+  },
+  "Orbit Computed Store": {
+    "prefix": "os-computed",
+    "body": [
+      "final ${1:computedStore} = defineStore(() => ComputedStore<${2:int}>((watch) {",
+      "  final ${3:dependency} = watch(${4:dependencyStore});",
+      "  return ${5:dependency.value * 2};",
+      "}));"
+    ],
+    "description": "Creates a ComputedStore that derives state from other stores using watch()"
+  },
+  "Orbit Future Provider": {
+    "prefix": "os-future-provider",
+    "body": [
+      "final ${1:dataProvider} = defineStore(() => FutureProvider<${2:String}>(() async {",
+      "  ${3:// Fetch async data}",
+      "  return ${4:value};",
+      "}));"
+    ],
+    "description": "Creates a FutureProvider store to manage and cache async Future state"
+  },
+  "Orbit Stream Provider": {
+    "prefix": "os-stream-provider",
+    "body": [
+      "final ${1:dataProvider} = defineStore(() => StreamProvider<${2:String}>(() {",
+      "  return ${3:stream};",
+      "}));"
+    ],
+    "description": "Creates a StreamProvider store to subscribe to and manage a Stream of state"
+  },
+  "Orbit Debounce": {
+    "prefix": "os-debounce",
+    "body": [
+      "debounce('${1:debounceId}', const Duration(milliseconds: ${2:300}), () async {",
+      "  ${3:// action logic}",
+      "});"
+    ],
+    "description": "Debounces an action directly inside an OrbitStore with auto-disposal safety"
+  },
+  "Orbit Throttle": {
+    "prefix": "os-throttle",
+    "body": [
+      "throttle('${1:throttleId}', const Duration(milliseconds: ${2:300}), () async {",
+      "  ${3:// action logic}",
+      "});"
+    ],
+    "description": "Throttles an action directly inside an OrbitStore with auto-disposal safety"
   }
 }
 

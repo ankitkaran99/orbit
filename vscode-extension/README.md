@@ -24,6 +24,11 @@ Type any of the following prefixes in `.dart` files:
 | `os-mutate` | `mutate(() => ...);` synchronous mutation state change. |
 | `os-mutate-async` | `await mutateAsync(() async { ... });` asynchronous mutation wrapper. |
 | `os-observe` | `Orbit.observe((store, mutation) { ... })` global mutation middleware listener. |
+| `os-computed` | `final computed = defineStore(() => ComputedStore<T>(...))` derived store setup. |
+| `os-future-provider` | `final futureProvider = defineStore(() => FutureProvider<T>(...))` async Future store setup. |
+| `os-stream-provider` | `final streamProvider = defineStore(() => StreamProvider<T>(...))` async Stream store setup. |
+| `os-debounce` | `debounce(id, duration, action)` inside OrbitStore with auto-disposal timer safety. |
+| `os-throttle` | `throttle(id, duration, action)` inside OrbitStore with auto-disposal timer safety. |
 
 ---
 

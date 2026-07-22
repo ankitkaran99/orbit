@@ -75,7 +75,7 @@ function activate(context) {
     }
 
     // 3. Generate OrbitStore Template Code
-    const storeTemplate = `import 'package:orbit/orbit.dart';
+    const storeTemplate = `import 'package:orbit_state/orbit.dart';
 
 class ${pascalName} extends OrbitStore {
   int _counter = 0;
