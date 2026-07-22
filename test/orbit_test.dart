@@ -39,9 +39,10 @@ class CounterStore extends OrbitStore {
 }
 
 class CounterStoreA extends CounterStore {}
-class CounterStoreB extends CounterStore {}
-class FlagStore extends CounterStore {}
 
+class CounterStoreB extends CounterStore {}
+
+class FlagStore extends CounterStore {}
 
 class FailingInitStore extends OrbitStore {
   int attempts = 0;
@@ -502,32 +503,30 @@ void main() {
       expect(Orbit.changeLog.single.action, 'increment');
     });
 
-    test('label inference supports JS, Firefox and obfuscated/empty stack traces', () {
+    test(
+        'label inference supports JS, Firefox and obfuscated/empty stack traces',
+        () {
       final store = Orbit.use<CounterStore>(() => CounterStore());
 
       // 1. VM stack trace format
       final vmTrace = MockStackTrace(
-        '#0      OrbitStore.mutate (package:orbit/src/orbit_store.dart:100:5)\n'
-        '#1      CounterStore.increment (package:orbit/example/main.dart:20:10)\n'
-        '#2      main (package:orbit/example/main.dart:5:5)'
-      );
+          '#0      OrbitStore.mutate (package:orbit/src/orbit_store.dart:100:5)\n'
+          '#1      CounterStore.increment (package:orbit/example/main.dart:20:10)\n'
+          '#2      main (package:orbit/example/main.dart:5:5)');
       expect(store.inferLabelForTest(null, vmTrace), 'increment');
 
       // 2. Chrome/V8 JS stack trace format
-      final chromeTrace = MockStackTrace(
-        'Error\n'
-        '    at CounterStore.mutate (http://localhost:8080/main.js:200:10)\n'
-        '    at CounterStore.increment (http://localhost:8080/main.js:100:5)\n'
-        '    at main (http://localhost:8080/main.js:5:2)'
-      );
+      final chromeTrace = MockStackTrace('Error\n'
+          '    at CounterStore.mutate (http://localhost:8080/main.js:200:10)\n'
+          '    at CounterStore.increment (http://localhost:8080/main.js:100:5)\n'
+          '    at main (http://localhost:8080/main.js:5:2)');
       expect(store.inferLabelForTest(null, chromeTrace), 'increment');
 
       // 3. Firefox/Safari stack trace format
-      final firefoxTrace = MockStackTrace(
-        'mutate@http://localhost:8080/main.js:200:10\n'
-        'increment@http://localhost:8080/main.js:100:5\n'
-        'main@http://localhost:8080/main.js:5:2'
-      );
+      final firefoxTrace =
+          MockStackTrace('mutate@http://localhost:8080/main.js:200:10\n'
+              'increment@http://localhost:8080/main.js:100:5\n'
+              'main@http://localhost:8080/main.js:5:2');
       expect(store.inferLabelForTest(null, firefoxTrace), 'increment');
 
       // 4. Obfuscated or unrecognizable stack trace (should fall back gracefully to null without crashing)
@@ -902,7 +901,9 @@ void main() {
       expect(computed().state, 1);
     });
 
-    test('handles conditional dependencies dynamically and does not leak or fail', () {
+    test(
+        'handles conditional dependencies dynamically and does not leak or fail',
+        () {
       final flagStore = defineStore(() => FlagStore());
       final storeA = defineStore(() => CounterStoreA());
       final storeB = defineStore(() => CounterStoreB());
@@ -1079,7 +1080,8 @@ void main() {
       }
     });
 
-    test('cancels active timers and does not fire or leak if store is disposed', () async {
+    test('cancels active timers and does not fire or leak if store is disposed',
+        () async {
       final store = Orbit.use<CounterStore>(() => CounterStore());
       var fired = false;
 

@@ -144,7 +144,6 @@ abstract class OrbitStore extends ChangeNotifier {
     return _inferLabel(explicitLabel, trace);
   }
 
-
   /// Runs [action], then notifies every listener that state changed.
   ///
   /// Returns the result of [action].
