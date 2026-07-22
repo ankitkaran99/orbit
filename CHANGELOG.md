@@ -1,3 +1,7 @@
+## 0.3.2
+
+- Added Dart VM Service protocol integration (`ext.orbit.getStores` service extension and `orbit:state-changed` event dispatching) to support DevTools and VS Code State Inspector integrations.
+
 ## 0.3.1
 
 - Fixed LICENSE file formatting to comply with standard SPDX MIT license template for correct pub.dev detection.

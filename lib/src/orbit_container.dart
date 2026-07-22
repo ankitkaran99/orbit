@@ -18,6 +18,31 @@ class Orbit {
 
   static final Map<Type, OrbitStore> _stores = {};
 
+  static bool _serviceExtensionRegistered = false;
+
+  static void _registerServiceExtension() {
+    if (_serviceExtensionRegistered) return;
+    _serviceExtensionRegistered = true;
+    try {
+      developer.registerExtension('ext.orbit.getStores',
+          (method, parameters) async {
+        final Map<String, dynamic> storesData = {};
+        for (final entry in _stores.entries) {
+          final typeName = entry.key.toString();
+          final store = entry.value;
+          storesData[typeName] = {
+            'state': store.debugSnapshot() ?? {},
+            'isReady': store.isReady,
+            'listeners': store._listenerCount,
+          };
+        }
+        return developer.ServiceExtensionResponse.result(jsonEncode({
+          'stores': storesData,
+        }));
+      });
+    } catch (_) {}
+  }
+
   // ---- Debugging & middleware -------------------------------------
 
   /// Whether mutations are printed to the console and recorded in
@@ -66,6 +91,14 @@ class Orbit {
       if (_log.length > _maxLogEntries) _log.removeFirst();
       debugPrint(mutation.toString());
     }
+    try {
+      developer.postEvent('orbit:state-changed', {
+        'store': store.runtimeType.toString(),
+        'action': mutation.action,
+        'state': store.debugSnapshot() ?? {},
+      });
+    } catch (_) {}
+
     if (_observers.isEmpty) return;
     // Iterate a copy: an observer that (un)registers another observer
     // mid-callback shouldn't crash or skip entries.
@@ -89,6 +122,7 @@ class Orbit {
   /// [create] the first time it's requested. Every later call — from
   /// any widget, anywhere — returns that same instance.
   static T use<T extends OrbitStore>(T Function() create) {
+    _registerServiceExtension();
     final existing = _stores[T];
     if (existing != null) return existing as T;
     final store = create();

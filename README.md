@@ -14,7 +14,7 @@ Add Orbit to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  orbit_state: ^0.3.1
+  orbit_state: ^0.3.2
 ```
 
 ---
