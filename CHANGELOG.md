@@ -1,3 +1,8 @@
+## 0.3.3
+
+- Fixed dependency cleanup in `ComputedStore` to prevent listener leaks.
+- Improved stack frame parsing in `OrbitStore` for robust store label inference.
+
 ## 0.3.2
 
 - Added Dart VM Service protocol integration (`ext.orbit.getStores` service extension and `orbit:state-changed` event dispatching) to support DevTools and VS Code State Inspector integrations.
