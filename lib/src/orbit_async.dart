@@ -332,19 +332,22 @@ class ComputedStore<T> extends OrbitStore {
     try {
       final newValue = _compute(reader);
 
-      final oldDeps = _dependencies.keys.toSet();
-      final toRemove = oldDeps.difference(activeDeps);
-      final toAdd = activeDeps.difference(oldDeps);
+      // Remove dependencies no longer active
+      _dependencies.removeWhere((dep, unsubscribe) {
+        if (!activeDeps.contains(dep)) {
+          unsubscribe();
+          return true;
+        }
+        return false;
+      });
 
-      for (final dep in toRemove) {
-        final unsubscribe = _dependencies.remove(dep);
-        unsubscribe?.call();
-      }
-
-      for (final dep in toAdd) {
-        final listener = _recompute;
-        dep.addListener(listener);
-        _dependencies[dep] = () => dep.removeListener(listener);
+      // Add newly registered dependencies
+      for (final dep in activeDeps) {
+        if (!_dependencies.containsKey(dep)) {
+          final listener = _recompute;
+          dep.addListener(listener);
+          _dependencies[dep] = () => dep.removeListener(listener);
+        }
       }
 
       return newValue;

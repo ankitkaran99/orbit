@@ -101,19 +101,17 @@ abstract class OrbitStore extends ChangeNotifier {
   String? _inferLabel(String? explicitLabel, [StackTrace? testTrace]) {
     if (explicitLabel != null) return explicitLabel;
     try {
-      var trace = (testTrace ?? StackTrace.current).toString();
+      final trace = (testTrace ?? StackTrace.current).toString();
       var newlineCount = 0;
       var index = 0;
       while (newlineCount < 10 && index < trace.length) {
-        index = trace.indexOf('\n', index);
-        if (index == -1) break;
+        final nextIndex = trace.indexOf('\n', index);
+        if (nextIndex == -1) break;
         newlineCount++;
-        index++;
+        index = nextIndex + 1;
       }
-      if (index != -1 && index < trace.length) {
-        trace = trace.substring(0, index);
-      }
-      final frames = trace.split('\n');
+      final trimmedTrace = index < trace.length ? trace.substring(0, index) : trace;
+      final frames = trimmedTrace.split('\n');
       for (final line in frames) {
         var match = _stackFrameRegExp.firstMatch(line);
         match ??= _jsStackFrameRegExp.firstMatch(line);
