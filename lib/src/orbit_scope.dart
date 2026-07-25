@@ -1,4 +1,4 @@
-part of '../orbit_state.dart';
+part of '../orbit.dart';
 
 /// Creates a store instance scoped to this widget's subtree, instead of
 /// the app-wide singleton `Orbit.use<T>()` returns. Useful for dialogs,

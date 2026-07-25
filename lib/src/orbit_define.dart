@@ -1,4 +1,4 @@
-part of '../orbit_state.dart';
+part of '../orbit.dart';
 
 /// A reference to a store, created once via [defineStore].
 ///

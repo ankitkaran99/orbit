@@ -1,4 +1,4 @@
-part of '../orbit_state.dart';
+part of '../orbit.dart';
 
 /// Like `OrbitBuilder`, but only rebuilds when the value returned by
 /// [selector] actually changes — useful when a store holds a lot of

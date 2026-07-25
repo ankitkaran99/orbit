@@ -1,4 +1,4 @@
-part of '../orbit_state.dart';
+part of '../orbit.dart';
 
 /// Rebuilds [builder] whenever store [T] changes.
 ///

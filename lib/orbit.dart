@@ -4,7 +4,7 @@
 /// `ChangeNotifier`, `AnimatedBuilder`, and `InheritedNotifier` — the
 /// same primitives that power `AnimationController`, `ValueNotifier`,
 /// and `Theme.of(context)`-style lookups in the Flutter SDK.
-library orbit_state;
+library orbit;
 
 import 'dart:async';
 import 'dart:collection';

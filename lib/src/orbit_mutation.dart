@@ -1,4 +1,4 @@
-part of '../orbit_state.dart';
+part of '../orbit.dart';
 
 /// A single recorded mutation, produced by [OrbitStore.mutate] /
 /// [OrbitStore.mutateAsync] and passed to every `Orbit.observe`

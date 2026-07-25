@@ -1,0 +1,309 @@
+// Regression tests for the bug fixes and optimizations made in this
+// session, on top of the existing orbit_test.dart suite. Each group
+// documents which fix it's guarding against regressing.
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:orbit_state/orbit.dart';
+
+class _Counter extends OrbitStore {
+  int _count = 0;
+  int get count => _count;
+
+  void increment() => mutate(() => _count++);
+
+  void incrementThenThrow() => mutate(() {
+        _count++;
+        throw StateError('boom');
+      });
+
+  Future<void> incrementThenThrowAsync() => mutateAsync(() async {
+        _count++;
+        throw StateError('async boom');
+      });
+
+  @override
+  Map<String, Object?> debugSnapshot() => {'count': _count};
+}
+
+class _ResumeStore extends OrbitStore {
+  int resumeCalls = 0;
+
+  @override
+  void onResume() => resumeCalls++;
+}
+
+class _ThrowingResumeStore extends OrbitStore {
+  @override
+  void onResume() => throw StateError('resume boom');
+}
+
+// Two distinct ComputedStore subclasses (rather than two
+// ComputedStore<int> instances) so each gets its own registry Type —
+// Orbit.use() keys singletons by static Type, so two bare
+// ComputedStore<int>s would collide with each other regardless of the
+// cycle we're trying to test.
+late final OrbitStoreRef<_CircularA> circularARef;
+late final OrbitStoreRef<_CircularB> circularBRef;
+
+class _CircularA extends ComputedStore<int> {
+  _CircularA() : super((watch) => watch(circularBRef).state + 1);
+}
+
+class _CircularB extends ComputedStore<int> {
+  _CircularB() : super((watch) => watch(circularARef).state + 1);
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  tearDown(() {
+    Orbit.resetAll();
+    Orbit.clearChangeLog();
+    Orbit.debugLogging = true;
+  });
+
+  group('fix: failed mutations still reach observe()/changeLog', () {
+    test('mutate() records the error and still notifies listeners', () {
+      Orbit.debugLogging = true;
+      final store = Orbit.use<_Counter>(() => _Counter());
+      Orbit.clearChangeLog();
+
+      var notified = 0;
+      store.addListener(() => notified++);
+
+      final received = <OrbitMutation>[];
+      final unsubscribe = Orbit.observe((s, m) => received.add(m));
+
+      expect(() => store.incrementThenThrow(), throwsStateError);
+
+      expect(notified, 1, reason: 'listeners still get notified on error');
+      expect(received, hasLength(1),
+          reason: 'observe() must also see the failed mutation');
+      expect(received.single.error, isA<StateError>());
+      expect(Orbit.changeLog, hasLength(1),
+          reason: 'changeLog must also record the failed mutation');
+      expect(Orbit.changeLog.single.error, isA<StateError>());
+      expect(Orbit.changeLog.single.toString(), contains('threw'));
+      expect(store.count, 1); // the increment before the throw stuck
+
+      unsubscribe();
+    });
+
+    test('mutateAsync() records the error the same way', () async {
+      Orbit.debugLogging = true;
+      final store = Orbit.use<_Counter>(() => _Counter());
+      Orbit.clearChangeLog();
+
+      await expectLater(store.incrementThenThrowAsync(), throwsStateError);
+
+      expect(Orbit.changeLog, hasLength(1));
+      expect(Orbit.changeLog.single.error, isA<StateError>());
+    });
+  });
+
+  group('fix: debounce/throttle no longer share a timer-id namespace', () {
+    test('a debounce and a throttle using the same id do not interfere',
+        () async {
+      final store = Orbit.use<_Counter>(() => _Counter());
+      var debounceCalls = 0;
+      var throttleCalls = 0;
+
+      store.debounce('shared_id', const Duration(milliseconds: 10), () {
+        debounceCalls++;
+      });
+      // Same id as the debounce above — must not be swallowed by it.
+      store.throttle('shared_id', const Duration(milliseconds: 10), () {
+        throttleCalls++;
+      });
+
+      expect(throttleCalls, 1,
+          reason: 'throttle fires on the leading edge regardless of the '
+              'debounce sharing its id');
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(debounceCalls, 1,
+          reason: 'the debounce still fires after its own delay');
+    });
+  });
+
+  group('fix: ComputedStore custom equals', () {
+    test('bails out on value-equal results instead of always notifying', () {
+      final source = defineStore(() => _Counter());
+      var notifyCount = 0;
+
+      final computed = ComputedStore<List<int>>(
+        // Deliberately returns a *new* List each time, as most real
+        // `.where().toList()` derivations do.
+        (watch) => List<int>.filled(1, watch(source).count ~/ 2),
+        equals: (a, b) => a.length == b.length && a[0] == b[0],
+      );
+      Orbit.use<ComputedStore<List<int>>>(() => computed);
+      computed.addListener(() => notifyCount++);
+
+      source().increment(); // count 1, derived value [0] -> unchanged
+      expect(computed.state, [0]);
+      expect(notifyCount, 0,
+          reason: 'derived value is still [0]; a proper equals must bail');
+
+      source().increment(); // count 2, derived value [1] -> changed
+      expect(computed.state, [1]);
+      expect(notifyCount, 1);
+    });
+
+    test('default == never bails out for List results (documented gap)', () {
+      final source = defineStore(() => _Counter());
+      var notifyCount = 0;
+
+      // No custom equals: every dependency change notifies even though
+      // the derived value is always the same constant list, because a
+      // fresh List is never `==` to the previous one.
+      final computed = ComputedStore<List<int>>((watch) {
+        watch(source); // establish the dependency
+        return List<int>.filled(1, 0);
+      });
+      Orbit.use<ComputedStore<List<int>>>(() => computed);
+      computed.addListener(() => notifyCount++);
+
+      source().increment();
+      expect(notifyCount, 1,
+          reason: 'documents the gap equals is meant to close');
+    });
+  });
+
+  group('fix: ComputedStore circular dependency', () {
+    test('throws a clear StateError instead of a LateInitializationError',
+        () {
+      circularARef = defineStore(() => _CircularA());
+      circularBRef = defineStore(() => _CircularB());
+
+      expect(
+        () => circularARef(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('Circular ComputedStore dependency detected'),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('fix: dispose() eagerly notifies dependents', () {
+    test('a ComputedStore reacts immediately to a dependency reset, without '
+        'anything explicitly re-reading .state first', () {
+      final source = defineStore(() => _Counter());
+      final computed = defineStore(() => ComputedStore<int>((watch) {
+            return watch(source).count;
+          }));
+
+      source().increment();
+      expect(computed().state, 1);
+
+      var notifyCount = 0;
+      computed().addListener(() => notifyCount++);
+
+      // Nothing here reads .state between the reset() and the
+      // assertion — the dependent must recompute reactively via
+      // dispose()'s eager notifyListeners(), not the lazy fallback in
+      // the state getter (which only kicks in when .state is read).
+      Orbit.reset<_Counter>();
+
+      expect(notifyCount, 1,
+          reason: 'dispose() should notify the dependent immediately');
+      expect(computed().state, 0,
+          reason: 'the dependency was replaced with a fresh instance');
+    });
+  });
+
+  group('fix: FutureProvider.refresh() error handling', () {
+    test('refresh() completes normally on failure; ready/init still throws',
+        () async {
+      var callCount = 0;
+      final provider = FutureProvider<int>(() async {
+        callCount++;
+        throw StateError('fails every time');
+      });
+
+      Orbit.use<FutureProvider<int>>(() => provider);
+      await expectLater(provider.ready, throwsStateError,
+          reason: 'init() must still surface failures via ready/initError');
+
+      // Calling refresh() directly (as e.g. RefreshIndicator.onRefresh
+      // would) must NOT throw, even though the fetch fails again — the
+      // error should surface only through `state`.
+      await expectLater(provider.refresh(), completes);
+      expect(provider.state.hasError, isTrue);
+      expect(callCount, 2);
+    });
+  });
+
+  group('fix: shared app-lifecycle observer', () {
+    testWidgets('onResume() fires for every live store on resume',
+        (tester) async {
+      final a = Orbit.use<_ResumeStore>(() => _ResumeStore());
+      // A second store of a different type to make sure the shared
+      // observer fans out to more than one store.
+      final b = Orbit.use<_Counter>(() => _Counter());
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+
+      expect(a.resumeCalls, 1);
+      // _Counter doesn't override onResume(), just confirming this
+      // doesn't throw for stores that don't care about it either.
+      expect(b.count, 0);
+    });
+
+    testWidgets('one store throwing in onResume() does not block others',
+        (tester) async {
+      Orbit.use<_ThrowingResumeStore>(() => _ThrowingResumeStore());
+      final ok = Orbit.use<_ResumeStore>(() => _ResumeStore());
+
+      final errors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) => errors.add(details);
+
+      try {
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+
+        expect(ok.resumeCalls, 1,
+            reason: 'the throwing store must not block this one');
+        expect(errors, hasLength(1));
+        expect(errors.single.exception, isA<StateError>());
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
+    });
+  });
+
+  group('fix: DevTools snapshot safety', () {
+    test('_jsonSafe coerces non-JSON-safe values via toString()', () {
+      final safe = Orbit.jsonSafeForTest({
+        'when': DateTime(2024, 1, 1),
+        'nested': [DateTime(2024, 1, 1), 1, 'ok'],
+      });
+
+      expect(safe, isA<Map>());
+      final map = safe as Map;
+      expect(map['when'], isA<String>());
+      expect(map['nested'], isA<List>());
+      final nested = map['nested'] as List;
+      expect(nested[0], isA<String>()); // DateTime -> toString()
+      expect(nested[1], 1); // already JSON-safe, passed through
+      expect(nested[2], 'ok');
+    });
+
+    test('leaves already-JSON-safe values untouched', () {
+      expect(Orbit.jsonSafeForTest(null), isNull);
+      expect(Orbit.jsonSafeForTest(42), 42);
+      expect(Orbit.jsonSafeForTest('x'), 'x');
+      expect(Orbit.jsonSafeForTest(true), true);
+    });
+  });
+}

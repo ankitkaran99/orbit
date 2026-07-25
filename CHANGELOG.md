@@ -1,3 +1,10 @@
+## 0.3.5
+
+- Reverted library entry point to `package:orbit_state/orbit.dart`.
+- Fixed circular-dependency guard gap on `ComputedStore.state` read.
+- Exposed `Orbit.jsonSafeForTest` for DevTools snapshot unit testing.
+- Added comprehensive regression tests in `test/orbit_bugfixes_test.dart`.
+
 ## 0.3.4
 
 - Updated code formatting and state management refinements.

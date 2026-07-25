@@ -1,4 +1,4 @@
-part of '../orbit_state.dart';
+part of '../orbit.dart';
 
 /// Base class for all Orbit stores.
 ///
@@ -39,7 +39,6 @@ abstract class OrbitStore extends ChangeNotifier {
   bool _disposed = false;
   bool _initStarted = false;
   int _listenerCount = 0;
-  _OrbitLifecycleObserver? _lifecycleObserver;
   final List<void Function()> _watchDisposers = [];
   // Kept separate (rather than one shared map) so a debounce() and a
   // throttle() call using the same id don't collide with each other.
@@ -321,24 +320,11 @@ abstract class OrbitStore extends ChangeNotifier {
   }
 
   void _attachLifecycle() {
-    try {
-      final observer = _OrbitLifecycleObserver(this);
-      WidgetsBinding.instance.addObserver(observer);
-      _lifecycleObserver = observer;
-    } catch (_) {
-      // No live WidgetsBinding (e.g. a plain `test()` unit test without
-      // TestWidgetsFlutterBinding.ensureInitialized()) — onResume()
-      // just won't fire; every other Orbit feature still works fine.
-    }
+    Orbit._attachLifecycle(this);
   }
 
   void _detachLifecycle() {
-    final observer = _lifecycleObserver;
-    if (observer == null) return;
-    try {
-      WidgetsBinding.instance.removeObserver(observer);
-    } catch (_) {}
-    _lifecycleObserver = null;
+    Orbit._detachLifecycle(this);
   }
 
   /// Watches another global store and executes [onChange] whenever it notifies.
@@ -450,17 +436,5 @@ abstract class OrbitStore extends ChangeNotifier {
     }
     _watchDisposers.clear();
     super.dispose();
-  }
-}
-
-class _OrbitLifecycleObserver with WidgetsBindingObserver {
-  _OrbitLifecycleObserver(this._store);
-  final OrbitStore _store;
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _store.onResume();
-    }
   }
 }

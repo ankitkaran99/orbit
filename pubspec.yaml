@@ -1,19 +1,11 @@
 name: orbit_state
-description: >
-  A tiny, Pinia-style state management library for Flutter. Zero
-  dependencies, built entirely on ChangeNotifier + AnimatedBuilder.
-version: 0.3.4
+description: A tiny, Pinia-style state management library for Flutter. Zero dependencies, built entirely on ChangeNotifier + AnimatedBuilder.
+version: 0.3.5
 homepage: https://github.com/ankitkaran99/orbit
-repository: https://github.com/ankitkaran99/orbit
-issue_tracker: https://github.com/ankitkaran99/orbit/issues
-topics:
-  - state-management
-  - flutter
-
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
-  flutter: '>=3.0.0'
+  flutter: '>=3.10.0'
 
 dependencies:
   flutter:
@@ -22,6 +14,3 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
-
-flutter:

@@ -1,4 +1,4 @@
-part of '../orbit_state.dart';
+part of '../orbit.dart';
 
 /// Called for every mutation, on every store, once registered via
 /// [Orbit.observe]. Gets both the store (already reflecting the new
@@ -75,6 +75,10 @@ class Orbit {
       return value.toString();
     }
   }
+
+  /// Exposed helper for testing [_jsonSafe] directly.
+  @visibleForTesting
+  static Object? jsonSafeForTest(Object? value) => _jsonSafe(value);
 
   // ---- Debugging & middleware -------------------------------------
 
@@ -214,6 +218,61 @@ class Orbit {
     _log.clear();
     for (final store in stores) {
       store.dispose();
+    }
+  }
+
+  // ---- Shared app-lifecycle dispatch ---------------------------------
+  //
+  // Every OrbitStore wants to know when the app resumes (onResume()),
+  // but registering one WidgetsBindingObserver *per store instance*
+  // means every store creation/disposal does an add/remove on
+  // WidgetsBinding's global observer list — and removal there is a
+  // linear scan, so churn (e.g. repeatedly opening/closing OrbitScope'd
+  // dialogs or list-item forms) turns into O(n^2) work over the app's
+  // lifetime. A single shared observer that fans out to all live
+  // stores avoids that, and as a bonus isolates one store's onResume()
+  // throwing from blocking the others.
+  static final Set<OrbitStore> _liveStores = <OrbitStore>{};
+  static _OrbitLifecycleObserver? _lifecycleObserver;
+
+  static void _attachLifecycle(OrbitStore store) {
+    _liveStores.add(store);
+    if (_lifecycleObserver != null) return;
+    try {
+      final observer = _OrbitLifecycleObserver();
+      WidgetsBinding.instance.addObserver(observer);
+      _lifecycleObserver = observer;
+    } catch (_) {
+      // No live WidgetsBinding (e.g. a plain `test()` unit test without
+      // TestWidgetsFlutterBinding.ensureInitialized()) — onResume()
+      // just won't fire; every other Orbit feature still works fine.
+    }
+  }
+
+  static void _detachLifecycle(OrbitStore store) {
+    _liveStores.remove(store);
+  }
+}
+
+class _OrbitLifecycleObserver with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    // Snapshot first: a store's onResume() might itself create/dispose
+    // other stores, which would otherwise mutate the set mid-iteration.
+    for (final store in List<OrbitStore>.of(Orbit._liveStores)) {
+      if (store._disposed) continue;
+      try {
+        store.onResume();
+      } catch (exception, stackTrace) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: exception,
+          stack: stackTrace,
+          library: 'orbit',
+          context:
+              ErrorDescription('inside onResume() for ${store.runtimeType}'),
+        ));
+      }
     }
   }
 }

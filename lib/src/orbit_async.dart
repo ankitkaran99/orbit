@@ -1,4 +1,4 @@
-part of '../orbit_state.dart';
+part of '../orbit.dart';
 
 /// Represents the state of an asynchronous operation.
 sealed class AsyncValue<T> {
@@ -168,8 +168,9 @@ class FutureProvider<T> extends OrbitStore {
 
   @override
   FutureOr<void> init() {
-    // Rethrow here so a failing initial fetch surfaces through
-    // `initError`/`ready`, same as before.
+    // Rethrow so a failing initial fetch surfaces through
+    // `initError`/`ready` — unlike the public refresh() below, which
+    // never rethrows since it's meant to be called directly by widgets.
     return _refresh(rethrowError: true);
   }
 
@@ -301,11 +302,31 @@ class _ComputedStoreReader implements StoreReader {
 /// It automatically tracks which stores are read via the `watch` reader
 /// passed to its compute function, and recomputes and notifies its own
 /// listeners when any dependency changes.
+///
+/// By default, the recomputed value is compared with the previous one
+/// using `==` to decide whether to notify listeners. That's fine for
+/// primitives and value types, but if your compute function returns a
+/// fresh `List`/`Map`/`Set` each time (as most `.where().toList()`-style
+/// derivations do), `==` compares by identity and is *always* unequal —
+/// so listeners get notified on every dependency change even when the
+/// derived contents haven't actually changed. Pass [equals] for
+/// value-based comparison in that case, e.g. using
+/// `package:collection`'s `ListEquality`/`SetEquality`/`MapEquality`.
+///
+/// A `ComputedStore` that reads another `ComputedStore` which
+/// (directly or transitively) reads back into the first one throws a
+/// clear `StateError` describing the cycle, rather than crashing with
+/// a confusing `LateInitializationError`.
 class ComputedStore<T> extends OrbitStore {
   /// Creates a [ComputedStore] with the given [_compute] function.
-  ComputedStore(this._compute);
+  ///
+  /// [equals] overrides how the new value is compared with the
+  /// previous one; defaults to `==`.
+  ComputedStore(this._compute, {bool Function(T previous, T next)? equals})
+      : _equals = equals ?? ((a, b) => a == b);
 
   final T Function(StoreReader watch) _compute;
+  final bool Function(T previous, T next) _equals;
   late T _state;
 
   /// The computed value.
@@ -317,6 +338,13 @@ class ComputedStore<T> extends OrbitStore {
   /// fallback for anything that disposed a dependency without going
   /// through the normal notify path.
   T get state {
+    // Reading .state on a store that's still mid-computation (i.e.
+    // it's on the compute stack below us) means a cycle: Orbit.use()
+    // already registered this instance before its first _runCompute()
+    // finished, so whoever's reading it back mid-flight would
+    // otherwise hit a bare "LateInitializationError" on _state instead
+    // of a clear explanation. See _computeStack.
+    _assertNotComputing();
     if (_hasDisposedDependencies()) {
       _recompute();
     }
@@ -334,44 +362,77 @@ class ComputedStore<T> extends OrbitStore {
 
   final Map<OrbitStore, void Function()> _dependencies = {};
 
+  // Tracks which ComputedStores are currently mid-computation, across
+  // *all* ComputedStore<T> instances (a static field is per-class, not
+  // per type argument, so this one stack is shared regardless of T).
+  // Lets a circular dependency between two ComputedStores surface as a
+  // clear error pointing at the cycle, instead of a bare
+  // "LateInitializationError: Field '_state' has not been initialized"
+  // several frames deep — which is what you'd get otherwise, since
+  // Orbit.use() registers a store before running its init/compute, so
+  // reading back into a store that's still mid-computation returns the
+  // half-built instance rather than looping forever.
+  static final List<ComputedStore> _computeStack = [];
+
+  void _assertNotComputing() {
+    if (!_computeStack.contains(this)) return;
+    final cycle = [
+      ..._computeStack.map((s) => s.runtimeType),
+      runtimeType,
+    ].join(' -> ');
+    throw StateError(
+      'Circular ComputedStore dependency detected: $cycle.\n'
+      "One of these stores' compute function reads (directly or "
+      'transitively) its own output through another ComputedStore. '
+      'Break the cycle by having one of them depend on a plain '
+      'OrbitStore value instead.',
+    );
+  }
+
   @override
   FutureOr<void> init() {
     _state = _runCompute();
   }
 
   T _runCompute() {
-    final activeDeps = <OrbitStore>{};
-    final reader = _ComputedStoreReader((store) {
-      activeDeps.add(store);
-      return store;
-    });
+    _assertNotComputing();
+    _computeStack.add(this);
+    try {
+      final activeDeps = <OrbitStore>{};
+      final reader = _ComputedStoreReader((store) {
+        activeDeps.add(store);
+        return store;
+      });
 
-    final newValue = _compute(reader);
+      final newValue = _compute(reader);
 
-    // Remove dependencies no longer active
-    _dependencies.removeWhere((dep, unsubscribe) {
-      if (!activeDeps.contains(dep)) {
-        unsubscribe();
-        return true;
+      // Remove dependencies no longer active
+      _dependencies.removeWhere((dep, unsubscribe) {
+        if (!activeDeps.contains(dep)) {
+          unsubscribe();
+          return true;
+        }
+        return false;
+      });
+
+      // Add newly registered dependencies
+      for (final dep in activeDeps) {
+        if (!_dependencies.containsKey(dep)) {
+          final listener = _recompute;
+          dep.addListener(listener);
+          _dependencies[dep] = () => dep.removeListener(listener);
+        }
       }
-      return false;
-    });
 
-    // Add newly registered dependencies
-    for (final dep in activeDeps) {
-      if (!_dependencies.containsKey(dep)) {
-        final listener = _recompute;
-        dep.addListener(listener);
-        _dependencies[dep] = () => dep.removeListener(listener);
-      }
+      return newValue;
+    } finally {
+      _computeStack.removeLast();
     }
-
-    return newValue;
   }
 
   void _recompute() {
     final newValue = _runCompute();
-    if (_state != newValue) {
+    if (!_equals(_state, newValue)) {
       mutate(() {
         _state = newValue;
       }, label: 'recompute');

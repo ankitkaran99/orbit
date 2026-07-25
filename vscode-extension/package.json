@@ -36,7 +36,7 @@
         {
           "id": "orbit-sidebar",
           "title": "Orbit State",
-          "icon": "orbit.png"
+          "icon": "orbit-icon.svg"
         }
       ]
     },
