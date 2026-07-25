@@ -1,4 +1,4 @@
-part of '../orbit.dart';
+part of '../orbit_state.dart';
 
 /// Base class for all Orbit stores.
 ///
@@ -41,7 +41,10 @@ abstract class OrbitStore extends ChangeNotifier {
   int _listenerCount = 0;
   _OrbitLifecycleObserver? _lifecycleObserver;
   final List<void Function()> _watchDisposers = [];
-  final Map<String, Timer> _activeTimers = {};
+  // Kept separate (rather than one shared map) so a debounce() and a
+  // throttle() call using the same id don't collide with each other.
+  final Map<String, Timer> _debounceTimers = {};
+  final Map<String, Timer> _throttleTimers = {};
 
   final Completer<void> _readyCompleter = Completer<void>()
     ..future.catchError((_) {});
@@ -172,8 +175,23 @@ abstract class OrbitStore extends ChangeNotifier {
         );
       }
       return result;
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (!_disposed) notifyListeners();
+      if (tracking) {
+        Orbit._notify(
+          this,
+          OrbitMutation(
+            store: this,
+            action: inferredLabel,
+            timestamp: DateTime.now(),
+            listenerCount: _listenerCount,
+            before: before,
+            after: debugSnapshot(),
+            error: error,
+            errorStackTrace: stackTrace,
+          ),
+        );
+      }
       rethrow;
     }
   }
@@ -211,8 +229,23 @@ abstract class OrbitStore extends ChangeNotifier {
         );
       }
       return result;
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (!_disposed) notifyListeners();
+      if (tracking) {
+        Orbit._notify(
+          this,
+          OrbitMutation(
+            store: this,
+            action: inferredLabel,
+            timestamp: DateTime.now(),
+            listenerCount: _listenerCount,
+            before: before,
+            after: debugSnapshot(),
+            error: error,
+            errorStackTrace: stackTrace,
+          ),
+        );
+      }
       rethrow;
     }
   }
@@ -314,6 +347,7 @@ abstract class OrbitStore extends ChangeNotifier {
     OrbitStoreRef<S> storeRef,
     void Function(S store) onChange,
   ) {
+    if (_disposed) return;
     final other = storeRef();
     final listener = () => onChange(other);
     other.addListener(listener);
@@ -330,9 +364,9 @@ abstract class OrbitStore extends ChangeNotifier {
     FutureOr<void> Function() action,
   ) {
     if (_disposed) return;
-    _activeTimers[id]?.cancel();
-    _activeTimers[id] = Timer(duration, () async {
-      _activeTimers.remove(id);
+    _debounceTimers[id]?.cancel();
+    _debounceTimers[id] = Timer(duration, () async {
+      _debounceTimers.remove(id);
       if (_disposed) return;
       try {
         await action();
@@ -358,7 +392,7 @@ abstract class OrbitStore extends ChangeNotifier {
     FutureOr<void> Function() action,
   ) {
     if (_disposed) return;
-    if (_activeTimers.containsKey(id)) return;
+    if (_throttleTimers.containsKey(id)) return;
 
     // leading-edge: execute immediately
     try {
@@ -384,8 +418,8 @@ abstract class OrbitStore extends ChangeNotifier {
       ));
     }
 
-    _activeTimers[id] = Timer(duration, () {
-      _activeTimers.remove(id);
+    _throttleTimers[id] = Timer(duration, () {
+      _throttleTimers.remove(id);
     });
   }
 
@@ -393,12 +427,22 @@ abstract class OrbitStore extends ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    // One last notification, before teardown, so anything tracking this
+    // store as a dependency (e.g. ComputedStore) finds out about the
+    // disposal right away instead of only on its next unrelated read.
+    // notifyListeners() itself now short-circuits on _disposed, so this
+    // goes straight to the underlying ChangeNotifier.
+    super.notifyListeners();
     _detachLifecycle();
     onDispose();
-    for (final timer in _activeTimers.values) {
+    for (final timer in _debounceTimers.values) {
       timer.cancel();
     }
-    _activeTimers.clear();
+    _debounceTimers.clear();
+    for (final timer in _throttleTimers.values) {
+      timer.cancel();
+    }
+    _throttleTimers.clear();
     for (final dispose in _watchDisposers) {
       try {
         dispose();

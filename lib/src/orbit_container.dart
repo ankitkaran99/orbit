@@ -1,4 +1,4 @@
-part of '../orbit.dart';
+part of '../orbit_state.dart';
 
 /// Called for every mutation, on every store, once registered via
 /// [Orbit.observe]. Gets both the store (already reflecting the new
@@ -31,16 +31,49 @@ class Orbit {
           final typeName = entry.key.toString();
           final store = entry.value;
           storesData[typeName] = {
-            'state': store.debugSnapshot() ?? {},
+            // debugSnapshot() can hold anything a user's store chooses to
+            // return (DateTime, enums, custom objects...) with no
+            // requirement that it already be JSON-safe, so encode
+            // defensively per-store rather than letting a single bad
+            // value take down the whole DevTools request.
+            'state': _jsonSafe(store.debugSnapshot()) ?? {},
             'isReady': store.isReady,
             'listeners': store._listenerCount,
           };
         }
-        return developer.ServiceExtensionResponse.result(jsonEncode({
-          'stores': storesData,
-        }));
+        try {
+          return developer.ServiceExtensionResponse.result(jsonEncode({
+            'stores': storesData,
+          }));
+        } catch (error) {
+          return developer.ServiceExtensionResponse.error(
+            developer.ServiceExtensionResponse.extensionError,
+            'Failed to encode Orbit store state: $error',
+          );
+        }
       });
     } catch (_) {}
+  }
+
+  /// Recursively coerces a [debugSnapshot] result into JSON-safe values,
+  /// falling back to [Object.toString] for anything [jsonEncode] can't
+  /// handle on its own.
+  static Object? _jsonSafe(Object? value) {
+    if (value == null || value is num || value is String || value is bool) {
+      return value;
+    }
+    if (value is Map) {
+      return value.map((key, v) => MapEntry(key.toString(), _jsonSafe(v)));
+    }
+    if (value is Iterable) {
+      return value.map(_jsonSafe).toList();
+    }
+    try {
+      jsonEncode(value);
+      return value;
+    } catch (_) {
+      return value.toString();
+    }
   }
 
   // ---- Debugging & middleware -------------------------------------
@@ -95,7 +128,9 @@ class Orbit {
       developer.postEvent('orbit:state-changed', {
         'store': store.runtimeType.toString(),
         'action': mutation.action,
-        'state': store.debugSnapshot() ?? {},
+        // Reuse the snapshot mutate()/mutateAsync() already took instead of
+        // calling the (potentially expensive) debugSnapshot() a 3rd time.
+        'state': mutation.after ?? {},
       });
     } catch (_) {}
 

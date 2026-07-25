@@ -1,4 +1,4 @@
-part of '../orbit.dart';
+part of '../orbit_state.dart';
 
 /// A single recorded mutation, produced by [OrbitStore.mutate] /
 /// [OrbitStore.mutateAsync] and passed to every `Orbit.observe`
@@ -11,6 +11,8 @@ class OrbitMutation {
     this.action,
     this.before,
     this.after,
+    this.error,
+    this.errorStackTrace,
   });
 
   /// The store instance that changed. Already reflects the *new* state
@@ -39,6 +41,17 @@ class OrbitMutation {
   /// Snapshot taken just after the mutation, if the store overrides
   /// [OrbitStore.debugSnapshot].
   final Map<String, Object?>? after;
+
+  /// Set if the mutation's action threw. `null` for a mutation that
+  /// completed successfully. A mutation is still recorded (and its
+  /// listeners still notified) even when the action throws partway
+  /// through, since state may have already changed before the error —
+  /// this field is what lets [Orbit.observe]/[Orbit.changeLog] tell that
+  /// case apart from a clean mutation instead of silently dropping it.
+  final Object? error;
+
+  /// The stack trace paired with [error], if any.
+  final StackTrace? errorStackTrace;
 
   /// Just the fields that actually changed, as `field: (old, new)`.
   /// Empty if [OrbitStore.debugSnapshot] wasn't overridden, or nothing
@@ -71,6 +84,9 @@ class OrbitMutation {
     }
     buffer.write(
         ' \u2014 notified $listenerCount listener${listenerCount == 1 ? '' : 's'}');
+    if (error != null) {
+      buffer.write(' \u2014 threw $error');
+    }
     return buffer.toString();
   }
 }

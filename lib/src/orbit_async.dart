@@ -1,4 +1,4 @@
-part of '../orbit.dart';
+part of '../orbit_state.dart';
 
 /// Represents the state of an asynchronous operation.
 sealed class AsyncValue<T> {
@@ -168,11 +168,21 @@ class FutureProvider<T> extends OrbitStore {
 
   @override
   FutureOr<void> init() {
-    return refresh();
+    // Rethrow here so a failing initial fetch surfaces through
+    // `initError`/`ready`, same as before.
+    return _refresh(rethrowError: true);
   }
 
   /// Triggers the future builder again, transitioning state back to loading.
-  Future<void> refresh() async {
+  ///
+  /// Always completes successfully — a failure is reported through
+  /// [state] as an [AsyncError], not by throwing, so it's safe to pass
+  /// directly as e.g. `RefreshIndicator.onRefresh` without a try/catch.
+  /// Check `state.hasError` (or use [AsyncValue.when]) if you need to
+  /// react to a failed refresh.
+  Future<void> refresh() => _refresh(rethrowError: false);
+
+  Future<void> _refresh({required bool rethrowError}) async {
     if (_disposed) return;
     final requestId = ++_requestCount;
     mutate(() {
@@ -189,7 +199,7 @@ class FutureProvider<T> extends OrbitStore {
       mutate(() {
         _state = AsyncValue.error(err, stack);
       }, label: 'error');
-      rethrow;
+      if (rethrowError) rethrow;
     }
   }
 
@@ -299,6 +309,13 @@ class ComputedStore<T> extends OrbitStore {
   late T _state;
 
   /// The computed value.
+  ///
+  /// Normally recomputation happens reactively: `OrbitStore.dispose()`
+  /// notifies dependents immediately when a dependency is torn down
+  /// (e.g. via `Orbit.reset<T>()`), which triggers [_recompute] right
+  /// away. This getter's own disposed-dependency check is just a
+  /// fallback for anything that disposed a dependency without going
+  /// through the normal notify path.
   T get state {
     if (_hasDisposedDependencies()) {
       _recompute();
@@ -329,31 +346,27 @@ class ComputedStore<T> extends OrbitStore {
       return store;
     });
 
-    try {
-      final newValue = _compute(reader);
+    final newValue = _compute(reader);
 
-      // Remove dependencies no longer active
-      _dependencies.removeWhere((dep, unsubscribe) {
-        if (!activeDeps.contains(dep)) {
-          unsubscribe();
-          return true;
-        }
-        return false;
-      });
-
-      // Add newly registered dependencies
-      for (final dep in activeDeps) {
-        if (!_dependencies.containsKey(dep)) {
-          final listener = _recompute;
-          dep.addListener(listener);
-          _dependencies[dep] = () => dep.removeListener(listener);
-        }
+    // Remove dependencies no longer active
+    _dependencies.removeWhere((dep, unsubscribe) {
+      if (!activeDeps.contains(dep)) {
+        unsubscribe();
+        return true;
       }
+      return false;
+    });
 
-      return newValue;
-    } catch (_) {
-      rethrow;
+    // Add newly registered dependencies
+    for (final dep in activeDeps) {
+      if (!_dependencies.containsKey(dep)) {
+        final listener = _recompute;
+        dep.addListener(listener);
+        _dependencies[dep] = () => dep.removeListener(listener);
+      }
     }
+
+    return newValue;
   }
 
   void _recompute() {

@@ -1,4 +1,4 @@
-part of '../orbit.dart';
+part of '../orbit_state.dart';
 
 /// Ergonomic extensions on [BuildContext] for accessing and watching Orbit stores.
 extension OrbitContextExtension on BuildContext {

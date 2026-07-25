@@ -1,3 +1,7 @@
+## 0.3.4
+
+- Updated code formatting and state management refinements.
+
 ## 0.3.3
 
 - Fixed dependency cleanup in `ComputedStore` to prevent listener leaks.
