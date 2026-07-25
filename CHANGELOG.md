@@ -1,3 +1,9 @@
+## 0.3.6
+
+- Protected `mutate()` and `mutateAsync()` from throwing `debugSnapshot()` calls.
+- Protected `ext.orbit.getStores` DevTools extension against `debugSnapshot()` exceptions per-store.
+- Added debug-only warning on non-reactive `OrbitStoreRef.of(context)` fallback when `listen: true` (default) is used without an `OrbitScope`.
+
 ## 0.3.5
 
 - Reverted library entry point to `package:orbit_state/orbit.dart`.

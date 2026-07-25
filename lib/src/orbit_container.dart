@@ -30,13 +30,20 @@ class Orbit {
         for (final entry in _stores.entries) {
           final typeName = entry.key.toString();
           final store = entry.value;
-          storesData[typeName] = {
+          Object? snapshot;
+          try {
             // debugSnapshot() can hold anything a user's store chooses to
             // return (DateTime, enums, custom objects...) with no
             // requirement that it already be JSON-safe, so encode
             // defensively per-store rather than letting a single bad
-            // value take down the whole DevTools request.
-            'state': _jsonSafe(store.debugSnapshot()) ?? {},
+            // value — or a debugSnapshot() that outright throws — take
+            // down the whole DevTools request for every other store.
+            snapshot = _jsonSafe(store.debugSnapshot());
+          } catch (error) {
+            snapshot = {'_error': 'debugSnapshot() threw: $error'};
+          }
+          storesData[typeName] = {
+            'state': snapshot ?? {},
             'isReady': store.isReady,
             'listeners': store._listenerCount,
           };

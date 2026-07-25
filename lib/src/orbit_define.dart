@@ -61,6 +61,19 @@ class OrbitStoreRef<T extends OrbitStore> {
           .dependOnInheritedWidgetOfExactType<_OrbitScopeInherited<T>>()
           ?.store;
       if (scoped != null) return scoped;
+      assert(() {
+        debugPrint(
+          'Orbit: $T.of(context) (or context.orbit($T)) was called with '
+          'listen: true (the default), but no OrbitScope<$T> was found '
+          'above this context — so it fell back to the app-wide singleton '
+          'WITHOUT actually subscribing this widget to rebuild on changes. '
+          'This is a silent one-time read, not a reactive watch. Wrap the '
+          'relevant widget in OrbitScope<$T>(...) for scoped reactivity, '
+          'or use OrbitBuilder<$T>/OrbitSelector<$T, ...> to reactively '
+          'watch the global singleton instead.',
+        );
+        return true;
+      }());
     } else {
       final element = context
           .getElementForInheritedWidgetOfExactType<_OrbitScopeInherited<T>>();

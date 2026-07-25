@@ -112,7 +112,8 @@ abstract class OrbitStore extends ChangeNotifier {
         newlineCount++;
         index = nextIndex + 1;
       }
-      final trimmedTrace = index < trace.length ? trace.substring(0, index) : trace;
+      final trimmedTrace =
+          index < trace.length ? trace.substring(0, index) : trace;
       final frames = trimmedTrace.split('\n');
       for (final line in frames) {
         var match = _stackFrameRegExp.firstMatch(line);
@@ -152,11 +153,31 @@ abstract class OrbitStore extends ChangeNotifier {
   /// If omitted, [label] is automatically inferred from the calling method name.
   /// If you also override [debugSnapshot], Orbit logs exactly which
   /// fields changed.
+  /// Calls [debugSnapshot], catching and reporting any exception instead
+  /// of letting it propagate. debugSnapshot() is a debug/devtools-only
+  /// helper — a bug in someone's override (a stale field reference, an
+  /// unfinished refactor, whatever) must never be able to block the
+  /// actual mutation from running, or replace/mask a real error from
+  /// [action] with an unrelated crash from this purely-for-logging call.
+  Map<String, Object?>? _safeSnapshot() {
+    try {
+      return debugSnapshot();
+    } catch (exception, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: exception,
+        stack: stackTrace,
+        library: 'orbit',
+        context: ErrorDescription('inside debugSnapshot() for $runtimeType'),
+      ));
+      return null;
+    }
+  }
+
   @protected
   R mutate<R>(R Function() action, {String? label}) {
     final tracking = Orbit.debugLogging || Orbit._hasObservers;
     final inferredLabel = tracking ? _inferLabel(label) : label;
-    final before = tracking ? debugSnapshot() : null;
+    final before = tracking ? _safeSnapshot() : null;
     try {
       final result = action();
       if (!_disposed) notifyListeners();
@@ -169,7 +190,7 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            after: debugSnapshot(),
+            after: _safeSnapshot(),
           ),
         );
       }
@@ -185,7 +206,7 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            after: debugSnapshot(),
+            after: _safeSnapshot(),
             error: error,
             errorStackTrace: stackTrace,
           ),
@@ -210,7 +231,7 @@ abstract class OrbitStore extends ChangeNotifier {
   }) async {
     final tracking = Orbit.debugLogging || Orbit._hasObservers;
     final inferredLabel = tracking ? _inferLabel(label) : label;
-    final before = tracking ? debugSnapshot() : null;
+    final before = tracking ? _safeSnapshot() : null;
     try {
       final result = await action();
       if (!_disposed) notifyListeners();
@@ -223,7 +244,7 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            after: debugSnapshot(),
+            after: _safeSnapshot(),
           ),
         );
       }
@@ -239,7 +260,7 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            after: debugSnapshot(),
+            after: _safeSnapshot(),
             error: error,
             errorStackTrace: stackTrace,
           ),

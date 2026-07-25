@@ -28,6 +28,22 @@ class _Counter extends OrbitStore {
   Map<String, Object?> debugSnapshot() => {'count': _count};
 }
 
+class _ThrowingSnapshotStore extends OrbitStore {
+  int _count = 0;
+  int get count => _count;
+
+  void increment() => mutate(() => _count++);
+
+  Future<void> incrementAsync() => mutateAsync(() async {
+        await Future<void>.delayed(Duration.zero);
+        _count++;
+      });
+
+  @override
+  Map<String, Object?> debugSnapshot() =>
+      throw StateError('buggy debugSnapshot');
+}
+
 class _ResumeStore extends OrbitStore {
   int resumeCalls = 0;
 
@@ -174,8 +190,7 @@ void main() {
   });
 
   group('fix: ComputedStore circular dependency', () {
-    test('throws a clear StateError instead of a LateInitializationError',
-        () {
+    test('throws a clear StateError instead of a LateInitializationError', () {
       circularARef = defineStore(() => _CircularA());
       circularBRef = defineStore(() => _CircularB());
 
@@ -193,7 +208,8 @@ void main() {
   });
 
   group('fix: dispose() eagerly notifies dependents', () {
-    test('a ComputedStore reacts immediately to a dependency reset, without '
+    test(
+        'a ComputedStore reacts immediately to a dependency reset, without '
         'anything explicitly re-reading .state first', () {
       final source = defineStore(() => _Counter());
       final computed = defineStore(() => ComputedStore<int>((watch) {
@@ -241,6 +257,55 @@ void main() {
     });
   });
 
+  group('fix: a throwing debugSnapshot() cannot block the real mutation', () {
+    test(
+        'mutate() still runs the action and notifies, even if '
+        'debugSnapshot() throws', () {
+      Orbit.debugLogging = true;
+      final store =
+          Orbit.use<_ThrowingSnapshotStore>(() => _ThrowingSnapshotStore());
+      Orbit.clearChangeLog();
+
+      final errors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) => errors.add(details);
+
+      var notified = 0;
+      store.addListener(() => notified++);
+
+      try {
+        // Must NOT throw — a buggy debug-only helper must never block
+        // the real mutation from running.
+        expect(() => store.increment(), returnsNormally);
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
+
+      expect(store.count, 1,
+          reason: 'the action must run despite debugSnapshot() throwing');
+      expect(notified, 1);
+      expect(errors, isNotEmpty,
+          reason: 'the debugSnapshot() bug should still be reported '
+              'somewhere, just not by breaking the mutation');
+    });
+
+    test('mutateAsync() has the same protection', () async {
+      Orbit.debugLogging = true;
+      final store =
+          Orbit.use<_ThrowingSnapshotStore>(() => _ThrowingSnapshotStore());
+
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (_) {};
+      try {
+        await expectLater(store.incrementAsync(), completes);
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
+
+      expect(store.count, 1);
+    });
+  });
+
   group('fix: shared app-lifecycle observer', () {
     testWidgets('onResume() fires for every live store on resume',
         (tester) async {
@@ -250,8 +315,7 @@ void main() {
       final b = Orbit.use<_Counter>(() => _Counter());
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      tester.binding
-          .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 
       expect(a.resumeCalls, 1);
       // _Counter doesn't override onResume(), just confirming this
@@ -279,6 +343,88 @@ void main() {
       } finally {
         FlutterError.onError = originalOnError;
       }
+    });
+  });
+
+  group(
+      'fix: OrbitStoreRef.of() warns when listen:true silently is not '
+      'reactive', () {
+    testWidgets('warns when there is no ancestor OrbitScope', (tester) async {
+      final ref = defineStore(() => _Counter());
+      final messages = <String>[];
+      final originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) messages.add(message);
+      };
+      try {
+        await tester.pumpWidget(Directionality(
+          textDirection: TextDirection.ltr,
+          child: Builder(builder: (context) {
+            ref.of(context); // listen: true (default), no scope above
+            return const SizedBox();
+          }),
+        ));
+      } finally {
+        debugPrint = originalDebugPrint;
+      }
+
+      expect(
+        messages.any((m) => m.contains('WITHOUT actually subscribing')),
+        isTrue,
+        reason: 'should flag the silent non-reactive fallback',
+      );
+    });
+
+    testWidgets('does not warn when resolved via an ancestor OrbitScope',
+        (tester) async {
+      final ref = defineStore(() => _Counter());
+      final messages = <String>[];
+      final originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) messages.add(message);
+      };
+      try {
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: OrbitScope<_Counter>(
+              create: () => _Counter(),
+              child: Builder(builder: (context) {
+                ref.of(context);
+                return const SizedBox();
+              }),
+            ),
+          ),
+        );
+      } finally {
+        debugPrint = originalDebugPrint;
+      }
+
+      expect(messages, isEmpty,
+          reason: 'properly scoped access should not warn');
+    });
+
+    testWidgets('does not warn for listen: false', (tester) async {
+      final ref = defineStore(() => _Counter());
+      final messages = <String>[];
+      final originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) messages.add(message);
+      };
+      try {
+        await tester.pumpWidget(Directionality(
+          textDirection: TextDirection.ltr,
+          child: Builder(builder: (context) {
+            ref.of(context, listen: false);
+            return const SizedBox();
+          }),
+        ));
+      } finally {
+        debugPrint = originalDebugPrint;
+      }
+
+      expect(messages, isEmpty,
+          reason: 'listen: false never claimed to be reactive');
     });
   });
 
