@@ -188,7 +188,7 @@ class OrbitStateWebviewProvider {
       font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
       margin: 0;
       padding: 14px;
-      color: var(--vscode-foreground, #cccccc);
+      color: var(--vscode-sideBar-foreground, var(--vscode-foreground, #cccccc));
       background-color: var(--vscode-sideBar-background, #181818);
       font-size: 12px;
       line-height: 1.4;
@@ -200,7 +200,7 @@ class OrbitStateWebviewProvider {
       justify-content: space-between;
       margin-bottom: 14px;
       padding-bottom: 10px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid var(--vscode-sideBar-border, rgba(128, 128, 128, 0.2));
     }
 
     .brand-title {
@@ -210,9 +210,7 @@ class OrbitStateWebviewProvider {
       font-weight: 700;
       font-size: 14px;
       letter-spacing: 0.5px;
-      background: linear-gradient(135deg, #3794ff 0%, #a855f7 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: var(--vscode-textLink-foreground, #3794ff);
     }
 
     .status-badge {
@@ -221,8 +219,9 @@ class OrbitStateWebviewProvider {
       gap: 6px;
       padding: 3px 8px;
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: var(--vscode-badge-background, rgba(128, 128, 128, 0.15));
+      color: var(--vscode-badge-foreground, inherit);
+      border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
       font-size: 11px;
       font-weight: 600;
     }
@@ -235,23 +234,22 @@ class OrbitStateWebviewProvider {
       transition: all 0.3s ease;
     }
     
-    .indicator.connected { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
-    .indicator.connecting { background-color: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+    .indicator.connected { background-color: #10b981; box-shadow: 0 0 8px #10b981; }
+    .indicator.connecting { background-color: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
     .indicator.disconnected { background-color: #ef4444; }
     .indicator.error { background-color: #ef4444; }
     
     .connection-panel {
-      background: rgba(255, 255, 255, 0.03);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 10px;
+      background: var(--vscode-welcomePage-tileBackground, rgba(128, 128, 128, 0.08));
+      border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
+      border-radius: 8px;
       padding: 10px 12px;
       margin-bottom: 14px;
     }
 
     .panel-label {
       font-size: 11px;
-      color: rgba(255, 255, 255, 0.6);
+      color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
       margin-bottom: 6px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -265,10 +263,10 @@ class OrbitStateWebviewProvider {
     
     input[type="text"] {
       flex: 1;
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 6px;
-      color: #fff;
+      background: var(--vscode-input-background, rgba(0, 0, 0, 0.1));
+      border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.2));
+      border-radius: 4px;
+      color: var(--vscode-input-foreground, inherit);
       padding: 6px 10px;
       font-size: 11px;
       font-family: inherit;
@@ -277,56 +275,55 @@ class OrbitStateWebviewProvider {
     
     input[type="text"]:focus {
       outline: none;
-      border-color: #3794ff;
-      box-shadow: 0 0 0 2px rgba(55, 148, 255, 0.2);
+      border-color: var(--vscode-focusBorder, #007fd4);
+      box-shadow: 0 0 0 2px var(--vscode-focusBorder, rgba(0, 127, 212, 0.3));
     }
     
     button {
-      background: linear-gradient(135deg, #007fd4 0%, #005fb8 100%);
-      color: #ffffff;
+      background: var(--vscode-button-background, #007fd4);
+      color: var(--vscode-button-foreground, #ffffff);
       border: none;
       padding: 6px 12px;
-      border-radius: 6px;
+      border-radius: 4px;
       cursor: pointer;
       font-family: inherit;
       font-weight: 600;
       font-size: 11px;
       transition: all 0.2s ease;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
     }
     
     button:hover {
-      opacity: 0.9;
+      background: var(--vscode-button-hoverBackground, #0062a3);
       transform: translateY(-1px);
     }
     
     .store-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      border-radius: 10px;
+      background: var(--vscode-welcomePage-tileBackground, rgba(128, 128, 128, 0.05));
+      border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
+      border-radius: 8px;
       margin-bottom: 10px;
       overflow: hidden;
       transition: all 0.2s ease;
     }
     
     .store-card:hover {
-      border-color: rgba(55, 148, 255, 0.3);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      border-color: var(--vscode-focusBorder, #007fd4);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
     
     .store-header {
       padding: 10px 12px;
-      background: rgba(255, 255, 255, 0.02);
+      background: var(--vscode-sideBarSectionHeader-background, rgba(128, 128, 128, 0.08));
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.1));
     }
     
     .store-name {
       font-weight: 700;
       font-size: 13px;
-      color: #60a5fa;
+      color: var(--vscode-textLink-foreground, #007fd4);
       letter-spacing: 0.2px;
     }
     
@@ -339,15 +336,15 @@ class OrbitStateWebviewProvider {
       font-size: 10px;
       padding: 2px 8px;
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.06);
-      color: rgba(255, 255, 255, 0.7);
+      background: var(--vscode-badge-background, rgba(128, 128, 128, 0.15));
+      color: var(--vscode-badge-foreground, inherit);
       font-weight: 600;
     }
     
     .badge.ready {
       background: rgba(16, 185, 129, 0.15);
-      color: #34d399;
-      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: var(--vscode-testing-iconPassed, #10b981);
+      border: 1px solid rgba(16, 185, 129, 0.3);
     }
     
     .store-body {
@@ -364,40 +361,40 @@ class OrbitStateWebviewProvider {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.08));
       padding: 3px 0;
     }
     
     .state-key {
-      color: #93c5fd;
-      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+      color: var(--vscode-symbolIcon-propertyForeground, var(--vscode-gitDecoration-modifiedResourceForeground, #007fd4));
+      font-family: var(--vscode-editor-font-family, 'Courier New', monospace);
       font-weight: 600;
       font-size: 11px;
     }
     
     .state-val-string {
-      color: #fca5a5;
-      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+      color: var(--vscode-debugTokenExpression-string, #a31515);
+      font-family: var(--vscode-editor-font-family, 'Courier New', monospace);
       font-size: 11px;
     }
     
     .state-val-num {
-      color: #86efac;
-      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+      color: var(--vscode-debugTokenExpression-number, #098658);
+      font-family: var(--vscode-editor-font-family, 'Courier New', monospace);
       font-weight: 600;
       font-size: 11px;
     }
     
     .state-val-bool {
-      color: #c084fc;
-      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+      color: var(--vscode-debugTokenExpression-boolean, #0000ff);
+      font-family: var(--vscode-editor-font-family, 'Courier New', monospace);
       font-weight: 600;
       font-size: 11px;
     }
     
     .no-stores {
       text-align: center;
-      color: rgba(255, 255, 255, 0.4);
+      color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.7));
       padding: 24px 12px;
       font-size: 12px;
     }
@@ -409,20 +406,20 @@ class OrbitStateWebviewProvider {
     }
     
     .icon-btn {
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.1));
       padding: 5px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 6px;
+      border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.15));
+      border-radius: 4px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      color: var(--vscode-foreground, #cccccc);
+      color: var(--vscode-icon-foreground, inherit);
       transition: all 0.2s ease;
     }
     
     .icon-btn:hover {
-      background: rgba(255, 255, 255, 0.12);
+      background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.2));
       transform: rotate(45deg);
     }
   </style>
@@ -680,7 +677,7 @@ class OrbitStateWebviewProvider {
           <summary class="state-row" style="cursor: pointer; user-select: none;">
             <span class="state-key">\${escapedKey}: <span style="font-size: 11px; opacity: 0.7;">\${label}</span></span>
           </summary>
-          <div style="padding-left: 12px; border-left: 1px dashed rgba(255, 255, 255, 0.15); margin-top: 4px;">
+          <div style="padding-left: 12px; border-left: 1px dashed var(--vscode-tree-inactiveIndentGuidesStroke, rgba(128, 128, 128, 0.3)); margin-top: 4px;">
             \${count === 0 ? '<em>Empty</em>' : entries.map(([k, v]) => renderItem(isArray ? \`[\${k}]\` : k, v)).join('')}
           </div>
         </details>
