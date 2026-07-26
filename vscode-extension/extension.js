@@ -183,105 +183,140 @@ class OrbitStateWebviewProvider {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
   <style>
+    * { box-sizing: border-box; }
     body {
-      font-family: 'Outfit', sans-serif;
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
       margin: 0;
-      padding: 16px;
+      padding: 14px;
       color: var(--vscode-foreground, #cccccc);
-      background-color: var(--vscode-sideBar-background, #1e1e1e);
-      font-size: 13px;
+      background-color: var(--vscode-sideBar-background, #181818);
+      font-size: 12px;
+      line-height: 1.4;
     }
     
-    .header {
+    .brand-header {
       display: flex;
       align-items: center;
-      margin-bottom: 16px;
-      gap: 8px;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
-    
-    .indicator {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background-color: #888;
-    }
-    
-    .indicator.connected { background-color: #4caf50; box-shadow: 0 0 8px #4caf50; }
-    .indicator.connecting { background-color: #ffeb3b; box-shadow: 0 0 8px #ffeb3b; }
-    .indicator.disconnected { background-color: #f44336; }
-    .indicator.error { background-color: #f44336; }
-    
-    .status-container {
+
+    .brand-title {
       display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #3794ff 0%, #a855f7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status-badge {
+      display: inline-flex;
       align-items: center;
       gap: 6px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 11px;
       font-weight: 600;
     }
     
+    .indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #888;
+      transition: all 0.3s ease;
+    }
+    
+    .indicator.connected { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
+    .indicator.connecting { background-color: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+    .indicator.disconnected { background-color: #ef4444; }
+    .indicator.error { background-color: #ef4444; }
+    
     .connection-panel {
       background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 16px;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+    }
+
+    .panel-label {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
     }
     
     .input-group {
       display: flex;
       gap: 6px;
-      margin-top: 8px;
     }
     
     input[type="text"] {
       flex: 1;
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
       color: #fff;
       padding: 6px 10px;
-      font-size: 12px;
+      font-size: 11px;
       font-family: inherit;
+      transition: all 0.2s ease;
     }
     
-    input:focus {
-      outline: 1px solid var(--vscode-focusBorder, #007fd4);
-      border-color: transparent;
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #3794ff;
+      box-shadow: 0 0 0 2px rgba(55, 148, 255, 0.2);
     }
     
     button {
-      background: var(--vscode-button-background, #007fd4);
-      color: var(--vscode-button-foreground, #ffffff);
+      background: linear-gradient(135deg, #007fd4 0%, #005fb8 100%);
+      color: #ffffff;
       border: none;
       padding: 6px 12px;
-      border-radius: 4px;
+      border-radius: 6px;
       cursor: pointer;
       font-family: inherit;
       font-weight: 600;
-      transition: background 0.2s;
+      font-size: 11px;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
     }
     
     button:hover {
-      background: var(--vscode-button-hoverBackground, #0062a3);
+      opacity: 0.9;
+      transform: translateY(-1px);
     }
     
     .store-card {
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
-      margin-bottom: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 10px;
+      margin-bottom: 10px;
       overflow: hidden;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: all 0.2s ease;
     }
     
     .store-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      border-color: rgba(255, 255, 255, 0.1);
+      border-color: rgba(55, 148, 255, 0.3);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
     }
     
     .store-header {
-      padding: 12px;
-      background: rgba(255, 255, 255, 0.03);
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.02);
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -289,71 +324,82 @@ class OrbitStateWebviewProvider {
     }
     
     .store-name {
-      font-weight: 600;
-      color: var(--vscode-textLink-foreground, #3794ff);
+      font-weight: 700;
+      font-size: 13px;
+      color: #60a5fa;
+      letter-spacing: 0.2px;
     }
     
     .badges {
       display: flex;
-      gap: 6px;
+      gap: 4px;
     }
     
     .badge {
       font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.7);
       font-weight: 600;
     }
     
     .badge.ready {
-      background: rgba(76, 175, 80, 0.15);
-      color: #81c784;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.2);
     }
     
     .store-body {
-      padding: 12px;
+      padding: 10px 12px;
     }
     
     .state-tree {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 4px;
     }
     
     .state-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
-      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      padding: 3px 0;
     }
     
     .state-key {
-      color: #9cdcfe;
-      font-family: 'Courier New', Courier, monospace;
+      color: #93c5fd;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
       font-weight: 600;
+      font-size: 11px;
     }
     
     .state-val-string {
-      color: #ce9178;
-      font-family: 'Courier New', Courier, monospace;
+      color: #fca5a5;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+      font-size: 11px;
     }
     
     .state-val-num {
-      color: #b5cea8;
-      font-family: 'Courier New', Courier, monospace;
+      color: #86efac;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+      font-weight: 600;
+      font-size: 11px;
     }
     
     .state-val-bool {
-      color: #569cd6;
-      font-family: 'Courier New', Courier, monospace;
+      color: #c084fc;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+      font-weight: 600;
+      font-size: 11px;
     }
     
     .no-stores {
       text-align: center;
-      color: #777;
-      padding: 24px;
+      color: rgba(255, 255, 255, 0.4);
+      padding: 24px 12px;
+      font-size: 12px;
     }
     
     .refresh-container {
@@ -363,32 +409,47 @@ class OrbitStateWebviewProvider {
     }
     
     .icon-btn {
-      background: transparent;
-      padding: 4px;
-      border: none;
-      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       color: var(--vscode-foreground, #cccccc);
+      transition: all 0.2s ease;
     }
     
     .icon-btn:hover {
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.12);
+      transform: rotate(45deg);
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="status-container">
+  <div class="brand-header">
+    <div class="brand-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="url(#orbit-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <defs>
+          <linearGradient id="orbit-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#3794ff"/>
+            <stop offset="100%" stop-color="#a855f7"/>
+          </linearGradient>
+        </defs>
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 3a9 9 0 0 1 9 9"/>
+      </svg>
+      Orbit Inspector
+    </div>
+    <div class="status-badge">
       <div id="status-indicator" class="indicator disconnected"></div>
       <span id="status-text">Disconnected</span>
     </div>
   </div>
 
   <div class="connection-panel">
-    <div>Dart VM Service URL:</div>
+    <div class="panel-label">Dart VM Service Connection</div>
     <div class="input-group">
       <input type="text" id="manual-uri" placeholder="ws://127.0.0.1:8181/..." />
       <button id="connect-btn">Connect</button>
@@ -397,7 +458,7 @@ class OrbitStateWebviewProvider {
 
   <div class="refresh-container">
     <button id="refresh-btn" class="icon-btn" title="Refresh state" style="display: none;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
     </button>
   </div>
 
