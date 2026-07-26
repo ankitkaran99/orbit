@@ -239,7 +239,10 @@ class Orbit {
   // lifetime. A single shared observer that fans out to all live
   // stores avoids that, and as a bonus isolates one store's onResume()
   // throwing from blocking the others.
-  static final Set<OrbitStore> _liveStores = <OrbitStore>{};
+  // Set.identity(), not a plain <OrbitStore>{}: tracks object identity
+  // of live stores, not a possibly-overridden ==/hashCode on a user's
+  // OrbitStore subclass.
+  static final Set<OrbitStore> _liveStores = Set<OrbitStore>.identity();
   static _OrbitLifecycleObserver? _lifecycleObserver;
 
   static void _attachLifecycle(OrbitStore store) {

@@ -2,8 +2,6 @@
 // session, on top of the existing orbit_test.dart suite. Each group
 // documents which fix it's guarding against regressing.
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orbit_state/orbit.dart';
@@ -42,6 +40,27 @@ class _ThrowingSnapshotStore extends OrbitStore {
   @override
   Map<String, Object?> debugSnapshot() =>
       throw StateError('buggy debugSnapshot');
+}
+
+class _ValueEqualStore extends OrbitStore {
+  _ValueEqualStore(this.id);
+  final int id;
+  int count = 0;
+  int resumeCalls = 0;
+
+  @override
+  void onResume() => resumeCalls++;
+
+  void increment() => mutate(() => count++);
+
+  // Deliberately overrides == for its own domain reasons (e.g.
+  // comparing two snapshots by id) — Orbit's internal bookkeeping must
+  // not be fooled by this into conflating two different instances.
+  @override
+  bool operator ==(Object other) => other is _ValueEqualStore && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class _ResumeStore extends OrbitStore {
@@ -186,6 +205,92 @@ void main() {
       source().increment();
       expect(notifyCount, 1,
           reason: 'documents the gap equals is meant to close');
+    });
+  });
+
+  group('fix: internal bookkeeping is identity-based, not ==-based', () {
+    // Note: ComputedStore dependencies are always resolved through
+    // Orbit.use<T>(), a Type-keyed singleton cache — so a single
+    // ComputedStore can never actually end up watching two *different*
+    // instances of the same type via the public API. The reachable
+    // scenario for this fix is multiple OrbitScope instances of the
+    // same type (e.g. two open dialogs), each with its own store —
+    // that's what this test covers.
+    testWidgets(
+        'two == -equal but distinct scoped instances of the same type are '
+        'tracked independently by the shared lifecycle observer',
+        (tester) async {
+      final a = Orbit.use<_ValueEqualStore>(() => _ValueEqualStore(1));
+      expect(a.resumeCalls, 0);
+
+      // A scoped instance that compares == to `a` (same id) but is a
+      // genuinely different object, alive at the same time.
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: OrbitScope<_ValueEqualStore>(
+          create: () => _ValueEqualStore(1),
+          child: const SizedBox(),
+        ),
+      ));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      // Both the global singleton and the scoped instance must have
+      // received their own onResume() call — if _liveStores had been a
+      // plain (==-based) Set, adding the scoped instance could have
+      // been treated as "already present" and silently dropped.
+      expect(a.resumeCalls, 1);
+
+      // Unmounting the scope must only remove *that* instance, not
+      // accidentally remove `a` because they compare ==.
+      await tester.pumpWidget(const SizedBox());
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(a.resumeCalls, 2,
+          reason: 'the global singleton must still be live and tracked '
+              'after the ==-equal scoped instance was disposed');
+    });
+  });
+
+  group('fix: ComputedStore recompute survives a throwing equals', () {
+    test(
+        'a throwing equals comparator does not freeze state at the stale '
+        'value', () {
+      final source = defineStore(() => _Counter());
+      var callCount = 0;
+
+      final computed = ComputedStore<int>(
+        (watch) => watch(source).count,
+        equals: (a, b) {
+          callCount++;
+          if (callCount == 1) {
+            throw StateError('buggy equals');
+          }
+          return a == b;
+        },
+      );
+      Orbit.use<ComputedStore<int>>(() => computed);
+
+      final errors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) => errors.add(details);
+
+      try {
+        // First recompute hits the throwing branch of equals — must
+        // still update _state (fail open) rather than freeze at 0.
+        source().increment();
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
+
+      expect(computed.state, 1,
+          reason: 'must not get stuck at the stale value just because '
+              'equals threw');
+      expect(errors, isNotEmpty,
+          reason: 'the buggy equals should still be reported somewhere');
+
+      // Second recompute uses the working branch of equals normally.
+      source().increment();
+      expect(computed.state, 2);
     });
   });
 

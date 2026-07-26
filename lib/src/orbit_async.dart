@@ -360,7 +360,12 @@ class ComputedStore<T> extends OrbitStore {
     return false;
   }
 
-  final Map<OrbitStore, void Function()> _dependencies = {};
+  // Map.identity() (not a plain {}) deliberately: this tracks *object
+  // identity* of dependency stores, not their notion of equality — a
+  // user's OrbitStore subclass may legitimately override ==/hashCode
+  // for its own domain reasons, and that must not affect Orbit's own
+  // internal bookkeeping about which specific instances are wired up.
+  final Map<OrbitStore, void Function()> _dependencies = Map.identity();
 
   // Tracks which ComputedStores are currently mid-computation, across
   // *all* ComputedStore<T> instances (a static field is per-class, not
@@ -375,7 +380,7 @@ class ComputedStore<T> extends OrbitStore {
   static final List<ComputedStore> _computeStack = [];
 
   void _assertNotComputing() {
-    if (!_computeStack.contains(this)) return;
+    if (!_computeStack.any((s) => identical(s, this))) return;
     final cycle = [
       ..._computeStack.map((s) => s.runtimeType),
       runtimeType,
@@ -398,7 +403,7 @@ class ComputedStore<T> extends OrbitStore {
     _assertNotComputing();
     _computeStack.add(this);
     try {
-      final activeDeps = <OrbitStore>{};
+      final activeDeps = Set<OrbitStore>.identity();
       final reader = _ComputedStoreReader((store) {
         activeDeps.add(store);
         return store;
@@ -432,7 +437,25 @@ class ComputedStore<T> extends OrbitStore {
 
   void _recompute() {
     final newValue = _runCompute();
-    if (!_equals(_state, newValue)) {
+    bool changed;
+    try {
+      changed = !_equals(_state, newValue);
+    } catch (exception, stackTrace) {
+      // A buggy equals comparator must not permanently freeze this
+      // store's state at a stale value just because it can't safely
+      // tell old and new apart — fail open (treat it as changed) so
+      // reactivity keeps working, and report the bug separately.
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: exception,
+        stack: stackTrace,
+        library: 'orbit',
+        context: ErrorDescription(
+            'inside the equals comparator for $runtimeType — treating '
+            'the value as changed so state does not get stuck'),
+      ));
+      changed = true;
+    }
+    if (changed) {
       mutate(() {
         _state = newValue;
       }, label: 'recompute');

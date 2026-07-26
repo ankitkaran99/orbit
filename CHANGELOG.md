@@ -1,3 +1,55 @@
+## 0.3.7
+
+- fix(orbit): identity-based internal tracking, throwing equals(), and a self-inflicted doc regression
+
+    - Orbit._liveStores, ComputedStore._dependencies, and the local
+    activeDeps set now use Set.identity()/Map.identity() instead of
+    plain collections. These track object identity of store instances,
+    not a possibly user-overridden ==/hashCode — nothing stops an
+    OrbitStore subclass from overriding equality for its own domain
+    reasons, and doing so must not let Orbit's internal bookkeeping
+    conflate two distinct instances. _computeStack's circular-dependency
+    check now uses identical() instead of List.contains()'s ==, for the
+    same reason (no .identity() constructor exists for List). Verified
+    the reachable case is multiple OrbitScope instances of the same type
+    (e.g. two open dialogs) — a single ComputedStore can't actually end
+    up depending on two different instances of one type today, since
+    Orbit.use<T>() is a Type-keyed singleton cache, but the fix is free
+    and future-proofs it regardless.
+
+    - ComputedStore._recompute(): protect the equals comparator the same
+    way debugSnapshot() was protected last pass. A throwing custom
+    equals previously left _state permanently frozen at the stale value
+    (the exception fired after _runCompute() already produced the
+    correct new value, but before mutate() applied it) — every
+    subsequent dependency change would keep hitting the same broken
+    comparator and keep failing to update. Now fails open (treats it as
+    changed, applies the update) and reports the error separately,
+    since a possibly-redundant notify is far less harmful than a
+    ComputedStore stuck forever.
+
+    - Fix a self-inflicted doc-comment regression in OrbitStore: when
+    _safeSnapshot() was added directly above mutate() a few commits ago,
+    mutate()'s full doc comment (label inference, debugSnapshot diffing
+    behavior) ended up attached to _safeSnapshot() instead, since a ///
+    comment always binds to the next declaration. Because
+    _safeSnapshot() is private, dartdoc never rendered any of it —
+    mutate(), the single most important @protected method in the
+    library, had effectively lost its documentation. Split the comment
+    back apart: _safeSnapshot() gets its own short note, mutate() gets
+    its original doc back.
+
+    - test/orbit_bugfixes_test.dart: add regression coverage for the
+    identity-based tracking (two ==-equal-but-distinct OrbitScope
+    instances of the same type both get independent onResume() dispatch
+    and independent lifecycle teardown) and the throwing-equals fix
+    (state advances past a comparator that throws once, instead of
+    freezing).
+
+    - Traced by hand against the existing suite; no regressions expected.
+    Not executed in this environment — run `flutter test` locally before
+    merging.
+
 ## 0.3.6
 
 - Protected `mutate()` and `mutateAsync()` from throwing `debugSnapshot()` calls.

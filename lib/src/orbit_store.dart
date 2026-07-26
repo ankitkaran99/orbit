@@ -145,20 +145,12 @@ abstract class OrbitStore extends ChangeNotifier {
     return _inferLabel(explicitLabel, trace);
   }
 
-  /// Runs [action], then notifies every listener that state changed.
-  ///
-  /// Returns the result of [action].
-  /// Optionally pass [label] to override the action name for [Orbit.observe] middleware
-  /// and debug logging — e.g. `mutate(() => count++)` (automatically uses `'increment'`).
-  /// If omitted, [label] is automatically inferred from the calling method name.
-  /// If you also override [debugSnapshot], Orbit logs exactly which
-  /// fields changed.
   /// Calls [debugSnapshot], catching and reporting any exception instead
   /// of letting it propagate. debugSnapshot() is a debug/devtools-only
   /// helper — a bug in someone's override (a stale field reference, an
   /// unfinished refactor, whatever) must never be able to block the
   /// actual mutation from running, or replace/mask a real error from
-  /// [action] with an unrelated crash from this purely-for-logging call.
+  /// an action with an unrelated crash from this purely-for-logging call.
   Map<String, Object?>? _safeSnapshot() {
     try {
       return debugSnapshot();
@@ -173,6 +165,14 @@ abstract class OrbitStore extends ChangeNotifier {
     }
   }
 
+  /// Runs [action], then notifies every listener that state changed.
+  ///
+  /// Returns the result of [action].
+  /// Optionally pass [label] to override the action name for [Orbit.observe] middleware
+  /// and debug logging — e.g. `mutate(() => count++)` (automatically uses `'increment'`).
+  /// If omitted, [label] is automatically inferred from the calling method name.
+  /// If you also override [debugSnapshot], Orbit logs exactly which
+  /// fields changed.
   @protected
   R mutate<R>(R Function() action, {String? label}) {
     final tracking = Orbit.debugLogging || Orbit._hasObservers;
