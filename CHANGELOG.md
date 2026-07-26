@@ -1,3 +1,8 @@
+## 0.4.0
+
+- Added official VS Code Extension for state inspection, code snippets, and store generation.
+- Improved complex object, map, and list structure debugging in Orbit DevTools extension.
+
 ## 0.3.9
 
 - Updated isolate state documentation in `README.md`.

@@ -44,5 +44,5 @@ To install locally for development or testing in VSCode:
 ```bash
 cd vscode-extension
 npx vsce package
-code --install-extension orbit-flutter-1.0.0.vsix
+code --install-extension orbit-flutter-1.4.0.vsix
 ```

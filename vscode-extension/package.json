@@ -2,7 +2,7 @@
   "name": "orbit-flutter",
   "displayName": "Orbit Flutter State Management",
   "description": "VS Code extension for Orbit — Flutter state management inspector, snippets, and store generator",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "orbit",
   "icon": "orbit.png",
   "engines": {

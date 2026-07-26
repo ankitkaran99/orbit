@@ -475,37 +475,43 @@ class OrbitStateWebviewProvider {
         };
 
         socket.onmessage = (event) => {
-          const response = JSON.parse(event.data);
-          
-          if (response.id === 'getVM' && response.result) {
-            const isolates = response.result.isolates;
-            if (isolates && isolates.length > 0) {
-              isolateId = isolates[0].id;
-              fetchStores();
-            }
-          } else if (response.id === 'getStores' && response.result) {
-            const resultData = JSON.parse(response.result.json);
-            currentStores = resultData.stores || {};
-            updateUI();
-          }
-
-          if (response.method === 'streamNotify' && response.params) {
-            const streamId = response.params.streamId;
-            const eventData = response.params.event;
-            if (streamId === 'Extension' && eventData.extensionKind === 'orbit:state-changed') {
-              const storeName = eventData.extensionData.store;
-              const state = eventData.extensionData.state;
-              if (currentStores[storeName]) {
-                currentStores[storeName].state = state;
-              } else {
-                currentStores[storeName] = {
-                  state: state,
-                  isReady: true,
-                  listeners: 0
-                };
+          try {
+            const response = JSON.parse(event.data);
+            
+            if (response.id === 'getVM' && response.result) {
+              const isolates = response.result.isolates;
+              if (isolates && isolates.length > 0) {
+                isolateId = isolates[0].id;
+                fetchStores();
               }
+            } else if (response.id === 'getStores' && response.result) {
+              const resultData = typeof response.result.json === 'string' 
+                ? JSON.parse(response.result.json) 
+                : response.result.json;
+              currentStores = resultData.stores || {};
               updateUI();
             }
+
+            if (response.method === 'streamNotify' && response.params) {
+              const streamId = response.params.streamId;
+              const eventData = response.params.event;
+              if (streamId === 'Extension' && eventData.extensionKind === 'orbit:state-changed') {
+                const storeName = eventData.extensionData.store;
+                const state = eventData.extensionData.state;
+                if (currentStores[storeName]) {
+                  currentStores[storeName].state = state;
+                } else {
+                  currentStores[storeName] = {
+                    state: state,
+                    isReady: true,
+                    listeners: 0
+                  };
+                }
+                updateUI();
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing VM Service message:', e);
           }
         };
 
@@ -579,25 +585,50 @@ class OrbitStateWebviewProvider {
     }
 
     function renderState(state) {
-      if (!state || Object.keys(state).length === 0) {
+      if (!state || typeof state !== 'object' || Object.keys(state).length === 0) {
         return '<em>Empty state</em>';
       }
       let html = '<div class="state-tree">';
       for (const [key, val] of Object.entries(state)) {
-        html += \`
-          <div class="state-row">
-            <span class="state-key">\${key}</span>
-            <span>\${formatValue(val)}</span>
-          </div>
-        \`;
+        html += renderItem(key, val);
       }
       html += '</div>';
       return html;
     }
 
+    function renderItem(key, val) {
+      const isComplex = val !== null && typeof val === 'object';
+      const escapedKey = escapeHtml(key);
+
+      if (!isComplex) {
+        return \`
+          <div class="state-row">
+            <span class="state-key">\${escapedKey}</span>
+            <span>\${formatValue(val)}</span>
+          </div>
+        \`;
+      }
+
+      const isArray = Array.isArray(val);
+      const entries = Object.entries(val);
+      const count = entries.length;
+      const label = isArray ? \`List (\${count})\` : \`Map/Object (\${count})\`;
+
+      return \`
+        <details class="tree-details" open style="margin-left: 8px; margin-top: 4px;">
+          <summary class="state-row" style="cursor: pointer; user-select: none;">
+            <span class="state-key">\${escapedKey}: <span style="font-size: 11px; opacity: 0.7;">\${label}</span></span>
+          </summary>
+          <div style="padding-left: 12px; border-left: 1px dashed rgba(255, 255, 255, 0.15); margin-top: 4px;">
+            \${count === 0 ? '<em>Empty</em>' : entries.map(([k, v]) => renderItem(isArray ? \`[\${k}]\` : k, v)).join('')}
+          </div>
+        </details>
+      \`;
+    }
+
     function formatValue(val) {
       if (typeof val === 'string') {
-        return \`<span class="state-val-string">"\${val}"</span>\`;
+        return \`<span class="state-val-string">"\${escapeHtml(val)}"</span>\`;
       }
       if (typeof val === 'number') {
         return \`<span class="state-val-num">\${val}</span>\`;
@@ -605,16 +636,19 @@ class OrbitStateWebviewProvider {
       if (typeof val === 'boolean') {
         return \`<span class="state-val-bool">\${val}</span>\`;
       }
-      if (val === null) {
+      if (val === null || val === undefined) {
         return '<span class="state-val-bool">null</span>';
       }
-      if (Array.isArray(val)) {
-        return \`<span class="state-val-string">[\${val.length} items]</span>\`;
-      }
-      if (typeof val === 'object') {
-        return '<span class="state-val-string">{object}</span>';
-      }
-      return String(val);
+      return escapeHtml(String(val));
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
   </script>
 </body>
