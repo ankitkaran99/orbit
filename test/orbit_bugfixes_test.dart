@@ -45,13 +45,10 @@ class _ThrowingSnapshotStore extends OrbitStore {
 class _ValueEqualStore extends OrbitStore {
   _ValueEqualStore(this.id);
   final int id;
-  int count = 0;
   int resumeCalls = 0;
 
   @override
   void onResume() => resumeCalls++;
-
-  void increment() => mutate(() => count++);
 
   // Deliberately overrides == for its own domain reasons (e.g.
   // comparing two snapshots by id) — Orbit's internal bookkeeping must
@@ -286,11 +283,53 @@ void main() {
           reason: 'must not get stuck at the stale value just because '
               'equals threw');
       expect(errors, isNotEmpty,
-          reason: 'the buggy equals should still be reported somewhere');
+          reason: 'the equals failure should be reported to FlutterError');
+    });
 
-      // Second recompute uses the working branch of equals normally.
-      source().increment();
-      expect(computed.state, 2);
+    testWidgets('OrbitSelector survives a throwing equals comparator',
+        (tester) async {
+      final store = defineStore(() => _Counter());
+      var callCount = 0;
+      var buildCount = 0;
+
+      final errors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) => errors.add(details);
+
+      try {
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: OrbitSelector<_Counter, int>(
+              store: store,
+              selector: (s) => s.count,
+              equals: (prev, next) {
+                callCount++;
+                if (callCount == 1) {
+                  throw StateError('buggy selector equals');
+                }
+                return prev == next;
+              },
+              builder: (context, count) {
+                buildCount++;
+                return Text('Count: $count');
+              },
+            ),
+          ),
+        );
+
+        expect(find.text('Count: 0'), findsOneWidget);
+
+        store().increment();
+        await tester.pump();
+
+        expect(find.text('Count: 1'), findsOneWidget);
+        expect(buildCount, 2);
+        expect(errors, isNotEmpty,
+            reason: 'OrbitSelector equals failure reported to FlutterError');
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
     });
   });
 

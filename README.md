@@ -14,7 +14,7 @@ Add Orbit to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  orbit_state: ^0.3.7
+  orbit_state: ^0.3.8
 ```
 
 ---
@@ -154,7 +154,7 @@ final formStore = context.orbit<FormStore>();
 
 ### 5. Use Stores Outside the Widget Tree
 
-Call stores anywhere in your application — event handlers, background tasks, or isolate callbacks:
+Call stores anywhere in your main isolate application logic — event handlers, timer callbacks, or async services (note: Dart static state is per-isolate, so separate background `Isolate`s receive their own isolate-local store state):
 
 ```dart
 void onPressed() {

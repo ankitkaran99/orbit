@@ -1,3 +1,9 @@
+## 0.3.8
+
+- Protected `OrbitSelector.equals` custom comparators against throwing exceptions, matching the error isolation added to `ComputedStore`. A throwing comparator now fails open (treats state as changed and reports to `FlutterError`) to prevent frozen UI updates.
+- Added regression tests for `OrbitSelector` throwing equality comparators.
+- Updated documentation in `README.md` clarifying isolate boundary behaviors and identity tracking.
+
 ## 0.3.7
 
 - fix(orbit): identity-based internal tracking, throwing equals(), and a self-inflicted doc regression

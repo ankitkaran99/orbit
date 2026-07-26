@@ -62,6 +62,24 @@ class _OrbitSelectorState<T extends OrbitStore, S>
     _updateInstance();
   }
 
+  bool _checkIsEqual(S previous, S next) {
+    if (widget.equals != null) {
+      try {
+        return widget.equals!(previous, next);
+      } catch (exception, stackTrace) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: exception,
+          stack: stackTrace,
+          library: 'orbit',
+          context: ErrorDescription(
+              'inside OrbitSelector.equals comparator — treating value as changed'),
+        ));
+        return false;
+      }
+    }
+    return previous == next;
+  }
+
   void _updateInstance() {
     final newInstance = _resolveStore<T>(context, widget.store);
     if (_instance != newInstance) {
@@ -71,8 +89,7 @@ class _OrbitSelectorState<T extends OrbitStore, S>
       newInstance.addListener(_onNotify);
     } else {
       final next = widget.selector(newInstance);
-      final isEqual = widget.equals?.call(_value, next) ?? (_value == next);
-      if (!isEqual) {
+      if (!_checkIsEqual(_value, next)) {
         _value = next;
       }
     }
@@ -82,15 +99,14 @@ class _OrbitSelectorState<T extends OrbitStore, S>
     final instance = _instance;
     if (instance == null) return;
     final next = widget.selector(instance);
-    final isEqual = widget.equals?.call(_value, next) ?? (_value == next);
+    final isEqual = _checkIsEqual(_value, next);
     if (!isEqual && mounted) {
       if (SchedulerBinding.instance.schedulerPhase ==
           SchedulerPhase.persistentCallbacks) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             final postNext = widget.selector(instance);
-            final postIsEqual =
-                widget.equals?.call(_value, postNext) ?? (_value == postNext);
+            final postIsEqual = _checkIsEqual(_value, postNext);
             if (!postIsEqual) {
               setState(() => _value = postNext);
             }
