@@ -154,7 +154,7 @@ final formStore = context.orbit<FormStore>();
 
 ### 5. Use Stores Outside the Widget Tree
 
-Call stores anywhere in your main isolate application logic — event handlers, timer callbacks, or async services (note: Dart static state is per-isolate, so separate background `Isolate`s receive their own isolate-local store state):
+Stores can be accessed from anywhere in your application's main isolate, including widget callbacks, services, repositories, timers, and other asynchronous code. If your application creates additional Dart isolates, each isolate maintains its own independent static store state. Stores are not shared across isolates; communicate between isolates using Dart's message-passing APIs if shared state is required.
 
 ```dart
 void onPressed() {
