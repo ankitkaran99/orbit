@@ -338,10 +338,6 @@ filteredTodosStore.builder(
 );
 ```
 
-##### Identity-Based Store Tracking & Safe Equality Comparators
-- **Identity-based tracking**: `ComputedStore` and `Orbit` internal bookkeeping use object identity (`Set.identity()` / `Map.identity()`) to track store instances. Override `==` or `hashCode` on your `OrbitStore` subclasses for domain logic without affecting store lifecycle tracking or dependency management.
-- **Throwing `equals` protection**: When providing a custom `equals` comparator function to `ComputedStore`, if the custom `equals` throws an exception, Orbit fails open (treating state as changed and reporting the error to `FlutterError.onError`) so the store state advances cleanly rather than freezing on stale values.
-
 #### Imperative: `OrbitStore.watch`
 For stateful stores, you can use the built-in `watch()` method to listen to changes on other stores. Orbit handles the subscription cleanup automatically when the watching store is disposed:
 
