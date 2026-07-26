@@ -1,6 +1,6 @@
 name: orbit_state
 description: A tiny, Pinia-style state management library for Flutter. Zero dependencies, built entirely on ChangeNotifier + AnimatedBuilder.
-version: 0.3.8
+version: 0.3.9
 homepage: https://github.com/ankitkaran99/orbit
 
 environment:

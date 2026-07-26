@@ -1,3 +1,7 @@
+## 0.3.9
+
+- Updated isolate state documentation in `README.md`.
+
 ## 0.3.8
 
 - Protected `OrbitSelector.equals` custom comparators against throwing exceptions, matching the error isolation added to `ComputedStore`. A throwing comparator now fails open (treats state as changed and reports to `FlutterError`) to prevent frozen UI updates.
