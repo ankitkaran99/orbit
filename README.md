@@ -10,7 +10,7 @@ Built entirely on Flutter SDK primitives: `ChangeNotifier`, `AnimatedBuilder`, a
 
 ## 🛠️ VS Code Extension
 
-An official [Orbit VS Code Extension](https://github.com/ankitkaran99/orbit/tree/main/vscode-extension) is available to inspect state trees in real-time, generate OrbitStores automatically, and use code snippets!
+An official [Orbit VS Code Extension](https://github.com/ankitkaran99/orbit/tree/main/vscode-extension) is available to inspect state trees in real-time (supporting both global singletons and scoped store instances), generate OrbitStores automatically, and use code snippets!
 
 ---
 
@@ -20,7 +20,7 @@ Add Orbit to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  orbit_state: ^0.4.0
+  orbit_state: ^0.5.0
 ```
 
 ---

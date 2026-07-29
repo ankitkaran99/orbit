@@ -29,7 +29,11 @@ part of '../orbit.dart';
 /// multiple scopes of the same store type can coexist independently
 /// (e.g. two open dialogs, each with their own `FormStore`).
 class OrbitScope<T extends OrbitStore> extends StatefulWidget {
-  const OrbitScope({super.key, required this.create, required this.child});
+  const OrbitScope({
+    super.key,
+    required this.create,
+    required this.child,
+  });
 
   /// Factory run once, in [State.initState], to create this scope's
   /// store instance.
@@ -89,9 +93,11 @@ class _OrbitScopeState<T extends OrbitStore> extends State<OrbitScope<T>> {
   void initState() {
     super.initState();
     _store = widget.create();
+    Orbit._registerScopedStore(_store);
     try {
       _store._runInit();
     } catch (_) {
+      Orbit._unregisterScopedStore(_store);
       _store.dispose();
       rethrow;
     }
@@ -99,19 +105,25 @@ class _OrbitScopeState<T extends OrbitStore> extends State<OrbitScope<T>> {
 
   @override
   void dispose() {
+    Orbit._unregisterScopedStore(_store);
     _store.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return _OrbitScopeInherited<T>(store: _store, child: widget.child);
+    return _OrbitScopeInherited<T>(
+      store: _store,
+      child: widget.child,
+    );
   }
 }
 
 class _OrbitScopeInherited<T extends OrbitStore> extends InheritedNotifier<T> {
-  _OrbitScopeInherited({required this.store, required Widget child})
-      : super(notifier: store, child: child);
+  _OrbitScopeInherited({
+    required this.store,
+    required Widget child,
+  }) : super(notifier: store, child: child);
 
   final T store;
 }

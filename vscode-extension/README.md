@@ -6,6 +6,13 @@ Snippets and store generators for [Orbit](https://pub.dev) — a lightweight, ze
 
 ## Features
 
+### 🔍 Orbit State Inspector Sidebar
+Provides a **real-time live preview** of state trees for **both Global singletons and Scoped store instances** during your Dart/Flutter debug sessions.
+- **Real-Time Updates**: Instantly reflects state changes and mutations as they happen in your app.
+- **Global & Scoped Support**: Full visibility into app-wide singletons as well as widget-subtree scoped stores (`OrbitScope`).
+- **Automatic Disambiguation**: Differentiates multiple active scoped instances of the same store class using unique instance identifiers (`StoreName (#hex)`).
+- **Zero Configuration**: Connects automatically to running Flutter debug sessions via the Dart VM Service.
+
 ### 🚀 Snippets
 Type any of the following prefixes in `.dart` files:
 

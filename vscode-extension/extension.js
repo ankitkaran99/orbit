@@ -554,16 +554,12 @@ class OrbitStateWebviewProvider {
               const streamId = response.params.streamId;
               const eventData = response.params.event;
               if (streamId === 'Extension' && eventData.extensionKind === 'orbit:state-changed') {
-                const storeName = eventData.extensionData.store;
+                const storeKey = eventData.extensionData.storeKey || eventData.extensionData.store;
                 const state = eventData.extensionData.state;
-                if (currentStores[storeName]) {
-                  currentStores[storeName].state = state;
+                if (currentStores[storeKey]) {
+                  currentStores[storeKey].state = state;
                 } else {
-                  currentStores[storeName] = {
-                    state: state,
-                    isReady: true,
-                    listeners: 0
-                  };
+                  fetchStores(); // Refetched to ensure full metadata (isScoped, listeners, etc.)
                 }
                 updateUI();
               }
@@ -624,20 +620,24 @@ class OrbitStateWebviewProvider {
       let html = '';
       for (const name of storeNames) {
         const store = currentStores[name];
-        html += \`
+        const scopedBadge = store.isScoped 
+          ? '<span class="badge scoped" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Scoped</span>' 
+          : '<span class="badge global" style="background: rgba(55, 148, 255, 0.15); color: #60a5fa; border: 1px solid rgba(55, 148, 255, 0.3);">Global</span>';
+        html += `
           <div class="store-card">
             <div class="store-header">
-              <span class="store-name">\${name}</span>
+              <span class="store-name">${escapeHtml(name)}</span>
               <div class="badges">
-                <span class="badge ready">\${store.isReady ? 'Ready' : 'Not Ready'}</span>
-                <span class="badge">Listeners: \${store.listeners}</span>
+                ${scopedBadge}
+                <span class="badge ready">${store.isReady ? 'Ready' : 'Not Ready'}</span>
+                <span class="badge">Listeners: ${store.listeners}</span>
               </div>
             </div>
             <div class="store-body">
-              \${renderState(store.state)}
+              ${renderState(store.state)}
             </div>
           </div>
-        \`;
+        `;
       }
       container.innerHTML = html;
     }

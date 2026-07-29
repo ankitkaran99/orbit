@@ -1,3 +1,9 @@
+## 0.5.0
+
+- Added Scoped Store inspection support in Dart VM Service protocol (`ext.orbit.getStores`) and VS Code State Inspector.
+- Added live real-time state mutation events for scoped store instances (`storeKey`).
+- Optimized scoped store registry memory tracking using identity sets.
+
 ## 0.4.0
 
 - Added official VS Code Extension for state inspection, code snippets, and store generation.

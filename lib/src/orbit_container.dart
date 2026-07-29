@@ -17,6 +17,16 @@ class Orbit {
   Orbit._();
 
   static final Map<Type, OrbitStore> _stores = {};
+  static final Set<OrbitStore> _scopedStores = Set<OrbitStore>.identity();
+
+  static void _registerScopedStore(OrbitStore store) {
+    _scopedStores.add(store);
+    _registerServiceExtension();
+  }
+
+  static void _unregisterScopedStore(OrbitStore store) {
+    _scopedStores.remove(store);
+  }
 
   static bool _serviceExtensionRegistered = false;
 
@@ -32,12 +42,6 @@ class Orbit {
           final store = entry.value;
           Object? snapshot;
           try {
-            // debugSnapshot() can hold anything a user's store chooses to
-            // return (DateTime, enums, custom objects...) with no
-            // requirement that it already be JSON-safe, so encode
-            // defensively per-store rather than letting a single bad
-            // value — or a debugSnapshot() that outright throws — take
-            // down the whole DevTools request for every other store.
             snapshot = _jsonSafe(store.debugSnapshot());
           } catch (error) {
             snapshot = {'_error': 'debugSnapshot() threw: $error'};
@@ -46,8 +50,32 @@ class Orbit {
             'state': snapshot ?? {},
             'isReady': store.isReady,
             'listeners': store._listenerCount,
+            'isScoped': false,
           };
         }
+
+        for (final store in _scopedStores) {
+          final typeName = store.runtimeType.toString();
+          final idHex = identityHashCode(store).toRadixString(16);
+          final displayName = '$typeName (#$idHex)';
+
+          Object? snapshot;
+          try {
+            snapshot = _jsonSafe(store.debugSnapshot());
+          } catch (error) {
+            snapshot = {'_error': 'debugSnapshot() threw: $error'};
+          }
+
+          storesData[displayName] = {
+            'state': snapshot ?? {},
+            'isReady': store.isReady,
+            'listeners': store._listenerCount,
+            'isScoped': true,
+            'instanceId': idHex,
+            'baseType': typeName,
+          };
+        }
+
         try {
           return developer.ServiceExtensionResponse.result(jsonEncode({
             'stores': storesData,
@@ -136,8 +164,15 @@ class Orbit {
       debugPrint(mutation.toString());
     }
     try {
+      final typeName = store.runtimeType.toString();
+      final idHex = identityHashCode(store).toRadixString(16);
+      final storeKey = Orbit._scopedStores.contains(store)
+          ? '$typeName (#$idHex)'
+          : typeName;
+
       developer.postEvent('orbit:state-changed', {
-        'store': store.runtimeType.toString(),
+        'store': typeName,
+        'storeKey': storeKey,
         'action': mutation.action,
         // Reuse the snapshot mutate()/mutateAsync() already took instead of
         // calling the (potentially expensive) debugSnapshot() a 3rd time.
