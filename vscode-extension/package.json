@@ -16,7 +16,8 @@
   "activationEvents": [
     "onLanguage:dart",
     "onCommand:orbit.createStore",
-    "onView:orbit.stateInspector"
+    "onView:orbit.stateInspector",
+    "onDebug"
   ],
   "contributes": {
     "commands": [
