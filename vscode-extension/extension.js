@@ -920,9 +920,15 @@ class OrbitStateWebviewProvider {
       return html;
     }
 
-    function renderItem(key, val) {
+    function renderItem(key, val, depth) {
+      depth = depth || 0;
       const escapedKey = esc(key);
       if (val !== null && typeof val === 'object') {
+        // Guard against deeply-nested or circular-ish state overflowing the
+        // call stack — cap rendering at 8 levels and show a placeholder beyond that.
+        if (depth >= 8) {
+          return \`<div class="state-row"><span class="state-key">\${escapedKey}</span><span style="opacity:0.6">{…}</span></div>\`;
+        }
         const isArray = Array.isArray(val);
         // For arrays use val.length (preserves sparse array count); for maps
         // use Object.entries so only own enumerable string keys are counted.
@@ -935,7 +941,7 @@ class OrbitStateWebviewProvider {
             <span class="state-key">\${escapedKey}: <span style="opacity:0.7;font-size:11px">\${label}</span></span>
           </summary>
           <div style="padding-left:12px;border-left:1px dashed rgba(128,128,128,0.3);margin-top:4px">
-            \${entries.length === 0 ? '<em>Empty</em>' : entries.map(([k,v]) => renderItem(isArray ? \`[\${k}]\` : k, v)).join('')}
+            \${entries.length === 0 ? '<em>Empty</em>' : entries.map(([k,v]) => renderItem(isArray ? \`[\${k}]\` : k, v, depth + 1)).join('')}
           </div></details>\`;
       }
       return \`<div class="state-row"><span class="state-key">\${escapedKey}</span><span>\${fmtVal(val)}</span></div>\`;

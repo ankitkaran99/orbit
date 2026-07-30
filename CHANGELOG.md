@@ -1,3 +1,7 @@
+## 0.5.2
+
+- **Fix (VS Code Extension)**: Added depth limit (8 levels) to the state tree renderer to prevent a call-stack overflow when inspecting deeply-nested store state objects.
+
 ## 0.5.1
 
 - **Fix (`ComputedStore`)**: Wrapped `_runCompute()` in `_recompute()` with a `try/catch` to prevent a buggy compute function from crashing the upstream dependency store's `mutate()` call.
