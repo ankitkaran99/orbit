@@ -90,7 +90,9 @@ class _OrbitSelectorState<T extends OrbitStore, S>
     } else {
       final next = widget.selector(newInstance);
       if (!_checkIsEqual(_value, next)) {
-        _value = next;
+        // Called from didChangeDependencies / didUpdateWidget — setState is safe
+        // here; without it, the widget would silently hold a stale _value.
+        setState(() => _value = next);
       }
     }
   }

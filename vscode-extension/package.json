@@ -2,7 +2,7 @@
   "name": "orbit-flutter",
   "displayName": "Orbit Flutter State Management",
   "description": "VS Code extension for Orbit — Flutter state management inspector, snippets, and store generator",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "publisher": "ankitkaran99",
   "icon": "orbit.png",
   "engines": {
@@ -17,7 +17,7 @@
     "onLanguage:dart",
     "onCommand:orbit.createStore",
     "onView:orbit.stateInspector",
-    "onDebug"
+    "onDebugInitialConfigurations"
   ],
   "contributes": {
     "commands": [

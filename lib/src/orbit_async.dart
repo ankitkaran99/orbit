@@ -266,7 +266,6 @@ class StreamProvider<T> extends OrbitStore {
   @override
   void onDispose() {
     _subscription?.cancel();
-    super.onDispose();
   }
 
   @override
@@ -403,6 +402,10 @@ class ComputedStore<T> extends OrbitStore {
     _assertNotComputing();
     _computeStack.add(this);
     try {
+      // Set.identity(), not a plain <OrbitStore>{}: dependency tracking must
+      // be identity-based to match the Map.identity() used in _dependencies —
+      // a user's OrbitStore subclass may override ==/hashCode for its own
+      // domain reasons, which must never affect Orbit's internal wiring.
       final activeDeps = Set<OrbitStore>.identity();
       final reader = _ComputedStoreReader((store) {
         activeDeps.add(store);
@@ -436,7 +439,25 @@ class ComputedStore<T> extends OrbitStore {
   }
 
   void _recompute() {
-    final newValue = _runCompute();
+    late T newValue;
+    try {
+      newValue = _runCompute();
+    } catch (exception, stackTrace) {
+      // A buggy compute function must not crash the dependency store's
+      // mutate() call — _recompute runs as a ChangeNotifier listener, so
+      // an uncaught exception here propagates out of notifyListeners() on
+      // the upstream store. Report the error and leave state at the last
+      // known-good value instead.
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: exception,
+        stack: stackTrace,
+        library: 'orbit',
+        context:
+            ErrorDescription('inside the compute function for $runtimeType — '
+                'state left at last known-good value'),
+      ));
+      return;
+    }
     bool changed;
     try {
       changed = !_equals(_state, newValue);
@@ -468,7 +489,6 @@ class ComputedStore<T> extends OrbitStore {
       unsubscribe();
     }
     _dependencies.clear();
-    super.onDispose();
   }
 
   @override

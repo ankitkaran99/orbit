@@ -349,16 +349,21 @@ For stateful stores, you can use the built-in `watch()` method to listen to chan
 
 ```dart
 class SearchServiceStore extends OrbitStore {
-  List<Result> results = [];
+  List<Result> _results = [];
+  List<Result> get results => _results;
 
   @override
   void init() {
     watch(searchQueryStore, (queryStore) async {
       final query = queryStore.query;
-      final newResults = await api.search(query);
-      mutate(() {
-        results = newResults;
-      });
+      try {
+        final newResults = await api.search(query);
+        mutate(() {
+          _results = newResults;
+        });
+      } catch (e) {
+        // Handle or log search errors as appropriate.
+      }
     });
   }
 }
@@ -375,17 +380,25 @@ Delays execution of an action until a specified duration of inactivity has passe
 
 ```dart
 class SearchStore extends OrbitStore {
-  String query = '';
-  List<Result> results = [];
+  String _query = '';
+  String get query => _query;
+  List<Result> _results = [];
+  List<Result> get results => _results;
 
   void updateQuery(String newQuery) {
-    query = newQuery;
-    
-    // Wait 300ms of inactivity before firing the API request
+    // Always go through mutate() so listeners, the change log, and
+    // debugSnapshot diffing all see the query update immediately.
+    mutate(() => _query = newQuery);
+
+    // Wait 300ms of inactivity before firing the API request.
+    // Capture the value now: if the user types again before the debounce
+    // fires, _query will have advanced — this snapshot ensures the callback
+    // searches against the value that originally triggered it.
+    final currentQuery = _query;
     debounce('search_query', const Duration(milliseconds: 300), () async {
-      final res = await api.search(query);
+      final res = await api.search(currentQuery);
       mutate(() {
-        results = res;
+        _results = res;
       });
     });
   }

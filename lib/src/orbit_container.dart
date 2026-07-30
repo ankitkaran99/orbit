@@ -163,22 +163,28 @@ class Orbit {
       if (_log.length > _maxLogEntries) _log.removeFirst();
       debugPrint(mutation.toString());
     }
-    try {
-      final typeName = store.runtimeType.toString();
-      final idHex = identityHashCode(store).toRadixString(16);
-      final storeKey = Orbit._scopedStores.contains(store)
-          ? '$typeName (#$idHex)'
-          : typeName;
+    // Fire postEvent so the VSCode/DevTools extension receives
+    // orbit:state-changed events. Skipped in release builds — no VM service
+    // client can attach there anyway, and the map allocation on every mutation
+    // is unnecessary overhead in production.
+    if (!kReleaseMode) {
+      try {
+        final typeName = store.runtimeType.toString();
+        final idHex = identityHashCode(store).toRadixString(16);
+        final storeKey = Orbit._scopedStores.contains(store)
+            ? '$typeName (#$idHex)'
+            : typeName;
 
-      developer.postEvent('orbit:state-changed', {
-        'store': typeName,
-        'storeKey': storeKey,
-        'action': mutation.action,
-        // Reuse the snapshot mutate()/mutateAsync() already took instead of
-        // calling the (potentially expensive) debugSnapshot() a 3rd time.
-        'state': mutation.after ?? {},
-      });
-    } catch (_) {}
+        developer.postEvent('orbit:state-changed', {
+          'store': typeName,
+          'storeKey': storeKey,
+          'action': mutation.action,
+          // Reuse the snapshot mutate()/mutateAsync() already took instead of
+          // calling the (potentially expensive) debugSnapshot() a 3rd time.
+          'state': mutation.after ?? {},
+        });
+      } catch (_) {}
+    }
 
     if (_observers.isEmpty) return;
     // Iterate a copy: an observer that (un)registers another observer
@@ -254,10 +260,12 @@ class Orbit {
 
   /// Disposes and clears every registered store. Mainly useful in test
   /// `tearDown` to stop state leaking between test cases.
+  ///
+  /// Note: does NOT clear [changeLog] — call [clearChangeLog] explicitly
+  /// if you also want to reset the mutation history.
   static void resetAll() {
     final stores = List<OrbitStore>.of(_stores.values);
     _stores.clear();
-    _log.clear();
     for (final store in stores) {
       store.dispose();
     }
@@ -296,6 +304,14 @@ class Orbit {
 
   static void _detachLifecycle(OrbitStore store) {
     _liveStores.remove(store);
+    // When the last live store is gone, tear down the shared observer so it
+    // doesn't leak and so the next _attachLifecycle() can register a fresh one.
+    if (_liveStores.isEmpty && _lifecycleObserver != null) {
+      try {
+        WidgetsBinding.instance.removeObserver(_lifecycleObserver!);
+      } catch (_) {}
+      _lifecycleObserver = null;
+    }
   }
 }
 

@@ -83,6 +83,10 @@ abstract class OrbitStore extends ChangeNotifier {
   @override
   void removeListener(VoidCallback listener) {
     if (_disposed) return;
+    // Decrement only when positive: ChangeNotifier.removeListener() is a
+    // no-op if the callback was never registered (e.g. it was added before
+    // this store was disposed but removeListener was called after). Guarding
+    // here prevents _listenerCount from going negative in those cases.
     if (_listenerCount > 0) _listenerCount--;
     super.removeListener(listener);
   }
@@ -121,7 +125,14 @@ abstract class OrbitStore extends ChangeNotifier {
         match ??= _firefoxStackFrameRegExp.firstMatch(line);
         if (match == null) continue;
         var symbol = match.group(1)!;
-        if (symbol.startsWith('OrbitStore.') || symbol == 'OrbitStore') {
+        // Skip all internal Orbit base-class frames so they don't leak through
+        // as the inferred label for user subclasses (e.g. a store extending
+        // FutureProvider would otherwise see '_refresh' as the action name).
+        if (symbol.startsWith('OrbitStore.') ||
+            symbol.startsWith('FutureProvider.') ||
+            symbol.startsWith('StreamProvider.') ||
+            symbol.startsWith('ComputedStore.') ||
+            symbol == 'OrbitStore') {
           continue;
         }
         symbol = symbol
@@ -131,7 +142,10 @@ abstract class OrbitStore extends ChangeNotifier {
         final methodName = parts.last;
         if (methodName.isNotEmpty &&
             methodName != 'mutate' &&
-            methodName != 'mutateAsync') {
+            methodName != 'mutateAsync' &&
+            methodName != '_refresh' &&
+            methodName != '_subscribe' &&
+            methodName != '_recompute') {
           return methodName;
         }
       }
@@ -206,6 +220,8 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
+            // Only call _safeSnapshot() for `after` if we already paid for
+            // `before` (i.e. tracking is on); otherwise both are null anyway.
             after: _safeSnapshot(),
             error: error,
             errorStackTrace: stackTrace,
@@ -350,13 +366,49 @@ abstract class OrbitStore extends ChangeNotifier {
 
   /// Watches another global store and executes [onChange] whenever it notifies.
   /// Automatically unsubscribes when this store is disposed.
+  ///
+  /// [onChange] may be synchronous or async. Errors from both sync throws
+  /// and unhandled async rejections are routed to [FlutterError.reportError]
+  /// rather than crashing the notifying store or silently dropping them.
   void watch<S extends OrbitStore>(
     OrbitStoreRef<S> storeRef,
     void Function(S store) onChange,
   ) {
     if (_disposed) return;
     final other = storeRef();
-    final listener = () => onChange(other);
+    if (other._disposed) return; // Don't attach to an already-disposed store
+    final listener = () {
+      if (_disposed) return;
+      try {
+        // Invoke via dynamic so we can inspect the runtime return value:
+        // the public API is void Function(S) for type safety, but a user
+        // may pass an async closure (Future<void> is assignable to void).
+        // Capturing the dynamic result lets us attach a catchError to any
+        // returned Future without triggering a use_of_void_result error.
+        // ignore: avoid_dynamic_calls
+        final dynamic result = (onChange as dynamic)(other);
+        if (result is Future<void>) {
+          result.catchError((Object exception, StackTrace stackTrace) {
+            FlutterError.reportError(FlutterErrorDetails(
+              exception: exception,
+              stack: stackTrace,
+              library: 'orbit',
+              context: ErrorDescription(
+                  'inside async watch callback on $runtimeType '
+                  'watching ${other.runtimeType}'),
+            ));
+          });
+        }
+      } catch (exception, stackTrace) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: exception,
+          stack: stackTrace,
+          library: 'orbit',
+          context: ErrorDescription('inside watch callback on $runtimeType '
+              'watching ${other.runtimeType}'),
+        ));
+      }
+    };
     other.addListener(listener);
     _watchDisposers.add(() => other.removeListener(listener));
   }

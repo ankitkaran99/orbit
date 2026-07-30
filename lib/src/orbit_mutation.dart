@@ -63,9 +63,16 @@ class OrbitMutation {
     final changed = <String, (Object?, Object?)>{};
     final keys = {...before!.keys, ...after!.keys};
     for (final key in keys) {
-      final oldValue = before![key];
-      final newValue = after![key];
-      if (oldValue != newValue) changed[key] = (oldValue, newValue);
+      // Use containsKey rather than just comparing values: if one map has
+      // key 'x' -> null and the other doesn't have 'x' at all, both
+      // map[key] calls return null and the change would be silently missed.
+      final inBefore = before!.containsKey(key);
+      final inAfter = after!.containsKey(key);
+      final oldValue = inBefore ? before![key] : null;
+      final newValue = inAfter ? after![key] : null;
+      if (!inBefore || !inAfter || oldValue != newValue) {
+        changed[key] = (oldValue, newValue);
+      }
     }
     return Map.unmodifiable(changed);
   }

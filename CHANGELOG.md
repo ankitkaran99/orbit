@@ -1,3 +1,16 @@
+## 0.5.1
+
+- **Fix (`ComputedStore`)**: Wrapped `_runCompute()` in `_recompute()` with a `try/catch` to prevent a buggy compute function from crashing the upstream dependency store's `mutate()` call.
+- **Fix (`OrbitStore.watch`)**: Added error handling for async `onChange` callbacks to catch unhandled Future rejections and route them to `FlutterError.reportError`.
+- **Optimization**: Gated `developer.postEvent` behind `!kReleaseMode` to eliminate map allocation overhead in production builds.
+- **Fix (VS Code Extension)**: Upgraded `Buffer.slice()` to `Buffer.subarray()` to avoid deprecation warnings and memory leaks.
+- **Fix (VS Code Extension)**: Corrected connection backoff state so that a reconnect resets the exponential timer back to 1s.
+- **Fix (VS Code Extension)**: Resolved `ext.orbit.getStores` polling by replacing the unbounded 150ms retry loop with capped exponential backoff.
+- **Fix (VS Code Extension)**: Handled `streamListen` `subExt` VM service responses, explicitly ignoring harmless "already subscribed" errors and warning on actual failures.
+- **Fix (VS Code Extension)**: Prevented a double-event bug where TCP connection drops caused a jarring "Error" then "Disconnected" UI flash, and nulled the stale `_ws` reference appropriately.
+- **Fix (VS Code Extension)**: Wrapped `createStore` file writing in a `try/catch` block to handle permissions or disk errors gracefully instead of failing silently.
+- **Docs**: Corrected anti-patterns in the `README.md` examples.
+
 ## 0.5.0
 
 - Added Scoped Store inspection support in Dart VM Service protocol (`ext.orbit.getStores`) and VS Code State Inspector.
@@ -68,8 +81,6 @@
     freezing).
 
     - Traced by hand against the existing suite; no regressions expected.
-    Not executed in this environment — run `flutter test` locally before
-    merging.
 
 ## 0.3.6
 

@@ -947,6 +947,45 @@ void main() {
       expect(computed().state, 2);
       expect(computeCount, 4);
     });
+
+    test(
+        'a throwing compute function does not crash the dependency store '
+        'and reports to FlutterError', () {
+      final errors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (d) => errors.add(d);
+
+      try {
+        final source = defineStore(() => CounterStore());
+        var shouldThrow = false;
+
+        final computed = ComputedStore<int>((watch) {
+          final s = watch(source);
+          if (shouldThrow) throw StateError('compute boom');
+          return s.count;
+        });
+        Orbit.use<ComputedStore<int>>(() => computed);
+
+        expect(computed.state, 0);
+
+        shouldThrow = true;
+        // This must NOT throw — the upstream store's mutate() must complete.
+        expect(() => source().increment(), returnsNormally);
+
+        expect(errors, hasLength(1));
+        expect(errors.single.exception, isA<StateError>());
+        expect(errors.single.context.toString(), contains('compute function'));
+        // State remains at last known-good value.
+        expect(computed.state, 0);
+
+        // After the throwing phase, normal mutations still work.
+        shouldThrow = false;
+        source().increment();
+        expect(computed.state, 2);
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
+    });
   });
 
   group('OrbitStore.watch', () {
@@ -968,6 +1007,56 @@ void main() {
 
       source().increment();
       expect(triggerCount, 1);
+    });
+
+    test('synchronous errors in watch callback are reported to FlutterError',
+        () {
+      final source = defineStore(() => CounterStore());
+      final errors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (d) => errors.add(d);
+
+      try {
+        final watcher = Orbit.use<WatcherStore>(() => WatcherStore(source, (_) {
+              throw StateError('watch sync boom');
+            }));
+
+        // Must NOT throw — errors are caught inside the listener.
+        expect(() => source().increment(), returnsNormally);
+        expect(errors, hasLength(1));
+        expect(errors.single.exception, isA<StateError>());
+        expect(errors.single.context.toString(), contains('watch callback'));
+
+        watcher.dispose();
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
+    });
+
+    test('async errors in watch callback are reported to FlutterError',
+        () async {
+      final source = defineStore(() => CounterStore());
+      final errors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (d) => errors.add(d);
+
+      try {
+        final watcher =
+            Orbit.use<AsyncWatcherStore>(() => AsyncWatcherStore(source));
+
+        source().increment();
+        // Allow the async callback to complete and its catchError to fire.
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        expect(errors, hasLength(1));
+        expect(errors.single.exception, isA<StateError>());
+        expect(
+            errors.single.context.toString(), contains('async watch callback'));
+
+        watcher.dispose();
+      } finally {
+        FlutterError.onError = originalOnError;
+      }
     });
   });
 
@@ -1209,6 +1298,19 @@ class WatcherStore extends OrbitStore {
   void init() {
     watch(sourceRef, (store) {
       onTrigger(store.count);
+    });
+  }
+}
+
+class AsyncWatcherStore extends OrbitStore {
+  AsyncWatcherStore(this.sourceRef);
+  final OrbitStoreRef<CounterStore> sourceRef;
+
+  @override
+  void init() {
+    watch(sourceRef, (store) async {
+      await Future<void>.delayed(Duration.zero);
+      throw StateError('async watch boom');
     });
   }
 }

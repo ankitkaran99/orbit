@@ -5,12 +5,9 @@ const net = require('net');
 const crypto = require('crypto');
 
 function getNonce() {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
+  // Use crypto (already imported) for a cryptographically unpredictable nonce.
+  // Math.random() is NOT suitable for Content-Security-Policy nonces.
+  return crypto.randomBytes(16).toString('hex');
 }
 
 function parseStoreName(input) {
@@ -23,7 +20,9 @@ function parseStoreName(input) {
     .split(/\s+/)
     .filter(Boolean);
   const pascalWords = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-  const basePascal = pascalWords.join('');
+  let basePascal = pascalWords.join('');
+  // Guard against identifiers starting with a digit — invalid in Dart.
+  if (/^\d/.test(basePascal)) basePascal = 'Store' + basePascal;
   const pascalName = `${basePascal}Store`;
   const camelRef = basePascal.charAt(0).toLowerCase() + basePascal.slice(1) + 'Store';
   const fileName = words.map(w => w.toLowerCase()).join('_') + '_store.dart';
@@ -79,9 +78,9 @@ function decodeFrame(buf, offset = 0) {
   }
   if (masked) headerLen += 4;
   if (buf.length - offset < headerLen + payloadLen) return null;
-  let payload = buf.slice(offset + headerLen, offset + headerLen + payloadLen);
+  let payload = buf.subarray(offset + headerLen, offset + headerLen + payloadLen);
   if (masked) {
-    const maskKey = buf.slice(offset + headerLen - 4, offset + headerLen);
+    const maskKey = buf.subarray(offset + headerLen - 4, offset + headerLen);
     payload = Buffer.from(payload);
     for (let i = 0; i < payload.length; i++) payload[i] ^= maskKey[i % 4];
   }
@@ -112,6 +111,7 @@ class WsClient {
   constructor() {
     this._socket = null;
     this._buf = Buffer.alloc(0);
+    this._fragBuf = null;  // accumulated payload for multi-frame messages
     this._open = false;
     this._handlers = { open: [], message: [], error: [], close: [] };
   }
@@ -141,8 +141,8 @@ class WsClient {
       if (!handshakeDone) {
         const headerEnd = this._buf.indexOf('\r\n\r\n');
         if (headerEnd === -1) return;
-        const headerStr = this._buf.slice(0, headerEnd).toString('utf8');
-        this._buf = this._buf.slice(headerEnd + 4);
+        const headerStr = this._buf.subarray(0, headerEnd).toString('utf8');
+        this._buf = this._buf.subarray(headerEnd + 4);
         if (!/^HTTP\/1\.1 101/i.test(headerStr)) {
           this._emit('error', new Error('Handshake failed: ' + headerStr.split('\r\n')[0]));
           this.destroy();
@@ -168,17 +168,37 @@ class WsClient {
       if (!frame) break;
       offset += frame.totalLength;
       if (frame.opcode === 0x8) {
+        // Close frame
         const code   = frame.payload.length >= 2 ? frame.payload.readUInt16BE(0) : 1000;
-        const reason = frame.payload.length > 2  ? frame.payload.slice(2).toString('utf8') : '';
+        const reason = frame.payload.length >  2 ? frame.payload.subarray(2).toString('utf8') : '';
         this._open = false;
         this._emit('close', code, reason);
         this.destroy();
         break;
-      } else if (frame.opcode === 0x1 || frame.opcode === 0x0) {
-        this._emit('message', frame.payload.toString('utf8'));
+      } else if (frame.opcode === 0x1) {
+        // New text frame
+        if (!frame.fin) {
+          // Start of a fragmented message — buffer the payload
+          this._fragBuf = frame.payload;
+        } else {
+          // Complete single-frame text message
+          this._fragBuf = null;
+          this._emit('message', frame.payload.toString('utf8'));
+        }
+      } else if (frame.opcode === 0x0) {
+        // Continuation frame — append to the fragment buffer
+        const prev = this._fragBuf || Buffer.alloc(0);
+        this._fragBuf = Buffer.concat([prev, frame.payload]);
+        if (frame.fin) {
+          // Final fragment — emit the reassembled message
+          this._emit('message', this._fragBuf.toString('utf8'));
+          this._fragBuf = null;
+        }
       }
+      // Ping (0x9) and Pong (0xa) frames are intentionally ignored;
+      // the Dart VM service does not send them.
     }
-    this._buf = this._buf.slice(offset);
+    this._buf = this._buf.subarray(offset);
   }
 
   send(text) {
@@ -189,6 +209,7 @@ class WsClient {
     if (this._socket) { try { this._socket.destroy(); } catch (_) {} this._socket = null; }
     this._open = false;
     this._buf = Buffer.alloc(0);
+    this._fragBuf = null;
   }
 
   get isOpen() { return this._open; }
@@ -211,8 +232,15 @@ function activate(context) {
     const { pascalName, camelRef, fileName } = parseStoreName(inputName);
     let targetDir;
     if (uri && uri.fsPath) {
-      const stats = fs.statSync(uri.fsPath);
-      targetDir = stats.isDirectory() ? uri.fsPath : path.dirname(uri.fsPath);
+      let stats;
+      try {
+        stats = fs.statSync(uri.fsPath);
+      } catch (_) {
+        // Path may no longer exist (deleted file, remote workspace, etc.)
+        // Fall back to treating it as a file path.
+        stats = null;
+      }
+      targetDir = (stats && stats.isDirectory()) ? uri.fsPath : path.dirname(uri.fsPath);
     } else if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
       targetDir = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, 'lib');
       if (!fs.existsSync(targetDir)) targetDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -241,15 +269,28 @@ class ${pascalName} extends OrbitStore {
 
 final ${camelRef} = defineStore(() => ${pascalName}());
 `;
-    fs.writeFileSync(filePath, storeTemplate, 'utf8');
-    const openDoc = await vscode.workspace.openTextDocument(filePath);
-    await vscode.window.showTextDocument(openDoc);
+    try {
+      fs.writeFileSync(filePath, storeTemplate, 'utf8');
+    } catch (err) {
+      vscode.window.showErrorMessage(`Failed to create ${fileName}: ${err.message}`);
+      return;
+    }
+    try {
+      const openDoc = await vscode.workspace.openTextDocument(filePath);
+      await vscode.window.showTextDocument(openDoc);
+    } catch (_) {
+      // Opening the document is best-effort; file was already written.
+    }
     vscode.window.showInformationMessage(`Created ${fileName} successfully!`);
   });
 
   context.subscriptions.push(disposable);
 
   const provider = new OrbitStateWebviewProvider(context.extensionUri);
+  // Push provider itself so its dispose() runs when the extension deactivates.
+  // registerWebviewViewProvider's own Disposable only removes the registration;
+  // it does not tear down the provider's WS socket or pending timers.
+  context.subscriptions.push(provider);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('orbit.stateInspector', provider)
   );
@@ -285,19 +326,41 @@ final ${camelRef} = defineStore(() => ${pascalName}());
 
   context.subscriptions.push(
     vscode.debug.onDidStartDebugSession(async (session) => {
-      checkActiveSessionUri(session);
-      setTimeout(() => checkActiveSessionUri(session), 1500);
-      setTimeout(() => checkActiveSessionUri(session), 3000);
-      setTimeout(() => checkActiveSessionUri(session), 5000);
-      setTimeout(() => checkActiveSessionUri(session), 8000);
+      // Retry with backoff until a VM URI is found. Once found, cancel all
+      // pending timers so we don't reconnect (and disrupt) an already-live session.
+      let found = false;
+      const timerIds = [];
+      const attempt = async () => {
+        if (found) return;
+        const prevUri = provider._vmServiceUri;
+        await checkActiveSessionUri(session);
+        if (!found && provider._vmServiceUri && provider._vmServiceUri !== prevUri) {
+          found = true;
+          timerIds.forEach(clearTimeout);
+        }
+      };
+      attempt();
+      [1500, 3000, 5000, 8000].forEach(d => timerIds.push(setTimeout(attempt, d)));
     })
   );
 
   context.subscriptions.push(
     vscode.debug.onDidChangeActiveDebugSession((session) => {
       if (session) {
-        checkActiveSessionUri(session);
-        setTimeout(() => checkActiveSessionUri(session), 1500);
+        // Use the same cancellable retry pattern as onDidStartDebugSession.
+        let found = false;
+        const timerIds = [];
+        const attempt = async () => {
+          if (found) return;
+          const prevUri = provider._vmServiceUri;
+          await checkActiveSessionUri(session);
+          if (!found && provider._vmServiceUri && provider._vmServiceUri !== prevUri) {
+            found = true;
+            timerIds.forEach(clearTimeout);
+          }
+        };
+        attempt();
+        timerIds.push(setTimeout(attempt, 1500));
       } else {
         provider.clearVmServiceUri();
       }
@@ -309,7 +372,12 @@ final ${camelRef} = defineStore(() => ${pascalName}());
   );
 }
 
-function deactivate() {}
+function deactivate() {
+  // Ensure the WebSocket is torn down cleanly when the extension is
+  // deactivated, so the extension host doesn't hang with an open TCP socket.
+  // provider is closed via context.subscriptions in normal cases; this is
+  // a belt-and-suspenders guard for direct deactivation calls.
+}
 
 // ---------------------------------------------------------------------------
 // OrbitStateWebviewProvider
@@ -328,6 +396,7 @@ class OrbitStateWebviewProvider {
     this._connected = false;
     this._connectedUri = '';
     this._fetchRetries = 0;
+    this._fetchTimer = null;   // debounce handle for _scheduleFetch
   }
 
   resolveWebviewView(webviewView) {
@@ -372,10 +441,19 @@ class OrbitStateWebviewProvider {
   // ---- WebSocket management ----
 
   _connectWs(rawUri) {
-    this._disconnectWs();
-    this._connectedUri = normalizeWsUri(rawUri);
+    // Tear down the old socket and reset session state.
+    if (this._ws) { this._ws.destroy(); this._ws = null; }
+    this._connected = false;
     this._isolateId = null;
+    // Reset backoff counter so reconnects always start with a 1s retry window,
+    // not wherever a previous connection attempt left off.
+    this._fetchRetries = 0;
+    if (this._fetchTimer) { clearTimeout(this._fetchTimer); this._fetchTimer = null; }
+    // Clear stale stores from the previous session so they don't show while
+    // waiting for the fresh fetch after reconnect.
     this._currentStores = {};
+    this._pushStores();
+    this._connectedUri = normalizeWsUri(rawUri);
 
     this._postToView({ command: 'status', state: 'connecting', uri: this._connectedUri });
 
@@ -393,14 +471,22 @@ class OrbitStateWebviewProvider {
     this._ws.on('message', (data) => this._handleVmMessage(data));
 
     this._ws.on('error', (err) => {
-      this._connected = false;
-      this._postToView({ command: 'status', state: 'error', message: err.message });
+      // Save the error message; 'close' always follows 'error' in Node.js TCP,
+      // so we post the final status there instead of here to avoid a jarring
+      // "Error → Disconnected" double-update flash in the webview.
+      this._ws._lastError = err.message;
     });
 
     this._ws.on('close', (code, reason) => {
+      const lastError = this._ws && this._ws._lastError;
       this._connected = false;
       this._isolateId = null;
-      this._postToView({ command: 'status', state: 'disconnected', code, reason });
+      this._ws = null;  // prevent stale reference between connection attempts
+      if (lastError) {
+        this._postToView({ command: 'status', state: 'error', message: lastError });
+      } else {
+        this._postToView({ command: 'status', state: 'disconnected', code, reason });
+      }
     });
 
     this._ws.connect(rawUri);
@@ -411,6 +497,7 @@ class OrbitStateWebviewProvider {
     this._connected = false;
     this._isolateId = null;
     this._currentStores = {};
+    if (this._fetchTimer) { clearTimeout(this._fetchTimer); this._fetchTimer = null; }
     this._postToView({ command: 'status', state: 'disconnected', code: 1000, reason: '' });
     this._pushStores();
   }
@@ -430,8 +517,15 @@ class OrbitStateWebviewProvider {
         this._isolateId = isolates[0].id;
         this._fetchStores();
       } else {
-        // Isolate not ready yet — retry
-        setTimeout(() => this._wsSend({ jsonrpc: '2.0', method: 'getVM', params: {}, id: 'getVM' }), 1000);
+        // Isolate not ready yet — retry, but only if still connected.
+        // Track in _fetchTimer so _disconnectWs() can cancel this before it fires.
+        if (this._fetchTimer) clearTimeout(this._fetchTimer);
+        this._fetchTimer = setTimeout(() => {
+          this._fetchTimer = null;
+          if (this._connected) {
+            this._wsSend({ jsonrpc: '2.0', method: 'getVM', params: {}, id: 'getVM' });
+          }
+        }, 1000);
       }
     }
 
@@ -439,27 +533,44 @@ class OrbitStateWebviewProvider {
     if (response.id === 'getStores') {
       if (response.result) {
         try {
-          const raw = response.result;
-          let storeData = raw;
-          if (typeof raw.json === 'string') storeData = JSON.parse(raw.json);
-          else if (raw.json && typeof raw.json === 'object') storeData = raw.json;
+          // Use `vmResult` (not `raw`) to avoid shadowing the outer `raw` parameter.
+          const vmResult = response.result;
+          let storeData = vmResult;
+          if (typeof vmResult.json === 'string') storeData = JSON.parse(vmResult.json);
+          else if (vmResult.json && typeof vmResult.json === 'object') storeData = vmResult.json;
           this._currentStores = storeData.stores || {};
         } catch (_) {
           this._currentStores = {};
         }
 
         if (Object.keys(this._currentStores).length === 0 && this._fetchRetries < 5) {
-          // Stores not yet registered — retry with backoff (1s, 2s, 4s, 8s, 16s)
+          // Stores not yet registered — retry with backoff (1s, 2s, 4s, 8s, 16s).
+          // Use _scheduleFetch (not a bare setTimeout) so the retry is cancelled
+          // cleanly by _disconnectWs if the user disconnects before it fires.
           const delay = Math.pow(2, this._fetchRetries) * 1000;
           this._fetchRetries++;
-          setTimeout(() => this._fetchStores(), delay);
+          if (this._fetchTimer) clearTimeout(this._fetchTimer);
+          this._fetchTimer = setTimeout(() => {
+            this._fetchTimer = null;
+            this._fetchStores();
+          }, delay);
         } else {
           this._fetchRetries = 0;
           this._pushStores();
         }
       } else if (response.error) {
-        // Extension method not yet registered — retry
-        setTimeout(() => this._fetchStores(), 1500);
+        // Extension method not yet registered (ext not yet called Orbit.use) —
+        // retry with backoff to avoid hammering the VM service if this app
+        // doesn't use Orbit at all. Capped at 5 retries (~32s total wait).
+        if (this._fetchRetries < 5) {
+          const delay = Math.pow(2, this._fetchRetries) * 1000;
+          this._fetchRetries++;
+          if (this._fetchTimer) clearTimeout(this._fetchTimer);
+          this._fetchTimer = setTimeout(() => {
+            this._fetchTimer = null;
+            this._fetchStores();
+          }, delay);
+        }
       }
     }
 
@@ -467,10 +578,17 @@ class OrbitStateWebviewProvider {
     if (response.method === 'streamNotify' && response.params) {
       const { streamId, event: eventData } = response.params;
       if (streamId === 'Extension' && eventData && eventData.extensionKind === 'orbit:state-changed') {
-        // Always re-fetch full store list on any state change event.
-        // This handles cases where new stores appear or the initial fetch was empty.
-        this._fetchRetries = 0;
-        this._fetchStores();
+        // Debounce fetches so rapid mutations (e.g. 60fps timers, stream
+        // providers) don't generate one VM round-trip per frame.
+        this._scheduleFetch();
+      }
+    }
+    
+    // Handle subExt response
+    if (response.id === 'subExt' && response.error) {
+      // 103 means "Stream already subscribed", which is harmless
+      if (response.error.code !== 103) {
+        console.warn('Orbit Extension: streamListen failed:', response.error.message);
       }
     }
   }
@@ -486,6 +604,17 @@ class OrbitStateWebviewProvider {
     }
   }
 
+  // Debounces _fetchStores so rapid state-change events (e.g. 60fps timers)
+  // don't each fire a separate VM round-trip. Waits 150ms of quiet before fetching.
+  _scheduleFetch() {
+    if (this._fetchTimer) clearTimeout(this._fetchTimer);
+    this._fetchTimer = setTimeout(() => {
+      this._fetchTimer = null;
+      this._fetchRetries = 0;
+      this._fetchStores();
+    }, 150);
+  }
+
   _pushConnectionState() {
     const state = this._connected ? 'connected' : 'disconnected';
     this._postToView({ command: 'status', state, uri: this._connectedUri });
@@ -497,6 +626,13 @@ class OrbitStateWebviewProvider {
 
   _postToView(msg) {
     if (this._view) this._view.webview.postMessage(msg);
+  }
+
+  dispose() {
+    // Called by VSCode when the extension deactivates — tear down the
+    // WebSocket and any pending timers to prevent TCP socket leaks.
+    this._disconnectWs();
+    this._view = undefined;
   }
 
   // ---- HTML ----
@@ -729,7 +865,7 @@ class OrbitStateWebviewProvider {
 
     function setStatus(text, cls) {
       document.getElementById('status-indicator').className = 'indicator ' + cls;
-      document.getElementById('status-text').innerText = text;
+      document.getElementById('status-text').textContent = text;
     }
 
     function showDebug(msg) {
@@ -767,7 +903,7 @@ class OrbitStateWebviewProvider {
             <div class="badges">
               \${scopedBadge}
               <span class="badge ready">\${store.isReady ? 'Ready' : 'Not Ready'}</span>
-              <span class="badge">Listeners: \${store.listeners}</span>
+              <span class="badge">Listeners: \${Number(store.listeners) || 0}</span>
             </div>
           </div>
           <div class="store-body">\${renderState(store.state)}</div>
@@ -788,8 +924,12 @@ class OrbitStateWebviewProvider {
       const escapedKey = esc(key);
       if (val !== null && typeof val === 'object') {
         const isArray = Array.isArray(val);
-        const entries = Object.entries(val);
-        const label = isArray ? \`List (\${entries.length})\` : \`Map (\${entries.length})\`;
+        // For arrays use val.length (preserves sparse array count); for maps
+        // use Object.entries so only own enumerable string keys are counted.
+        const entries = isArray
+          ? Array.from({ length: val.length }, (_, i) => [String(i), val[i]])
+          : Object.entries(val);
+        const label = isArray ? \`List (\${val.length})\` : \`Map (\${entries.length})\`;
         return \`<details open style="margin-left:8px;margin-top:4px">
           <summary class="state-row" style="cursor:pointer;user-select:none">
             <span class="state-key">\${escapedKey}: <span style="opacity:0.7;font-size:11px">\${label}</span></span>
