@@ -190,12 +190,16 @@ abstract class OrbitStore extends ChangeNotifier {
   @protected
   R mutate<R>(R Function() action, {String? label}) {
     final tracking = Orbit.debugLogging || Orbit._hasObservers;
+    // In non-release builds _notify must always run so that postEvent fires
+    // and the VS Code / DevTools extension receives live state updates —
+    // even when debugLogging is off and no observers are registered.
+    final notify = tracking || !kReleaseMode;
     final inferredLabel = tracking ? _inferLabel(label) : label;
     final before = tracking ? _safeSnapshot() : null;
     try {
       final result = action();
       if (!_disposed) notifyListeners();
-      if (tracking) {
+      if (notify) {
         Orbit._notify(
           this,
           OrbitMutation(
@@ -204,14 +208,14 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            after: _safeSnapshot(),
+            after: tracking ? _safeSnapshot() : null,
           ),
         );
       }
       return result;
     } catch (error, stackTrace) {
       if (!_disposed) notifyListeners();
-      if (tracking) {
+      if (notify) {
         Orbit._notify(
           this,
           OrbitMutation(
@@ -220,9 +224,7 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            // Only call _safeSnapshot() for `after` if we already paid for
-            // `before` (i.e. tracking is on); otherwise both are null anyway.
-            after: _safeSnapshot(),
+            after: tracking ? _safeSnapshot() : null,
             error: error,
             errorStackTrace: stackTrace,
           ),
@@ -246,12 +248,14 @@ abstract class OrbitStore extends ChangeNotifier {
     String? label,
   }) async {
     final tracking = Orbit.debugLogging || Orbit._hasObservers;
+    // Same as mutate: always notify in non-release mode for postEvent.
+    final notify = tracking || !kReleaseMode;
     final inferredLabel = tracking ? _inferLabel(label) : label;
     final before = tracking ? _safeSnapshot() : null;
     try {
       final result = await action();
       if (!_disposed) notifyListeners();
-      if (tracking) {
+      if (notify) {
         Orbit._notify(
           this,
           OrbitMutation(
@@ -260,14 +264,14 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            after: _safeSnapshot(),
+            after: tracking ? _safeSnapshot() : null,
           ),
         );
       }
       return result;
     } catch (error, stackTrace) {
       if (!_disposed) notifyListeners();
-      if (tracking) {
+      if (notify) {
         Orbit._notify(
           this,
           OrbitMutation(
@@ -276,7 +280,7 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            after: _safeSnapshot(),
+            after: tracking ? _safeSnapshot() : null,
             error: error,
             errorStackTrace: stackTrace,
           ),

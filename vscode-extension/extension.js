@@ -463,9 +463,13 @@ class OrbitStateWebviewProvider {
       this._connected = true;
       this._fetchRetries = 0;
       this._postToView({ command: 'status', state: 'connected', uri: this._connectedUri });
-      // Kick off the VM-service protocol entirely from Node.js
+      // Kick off the VM-service protocol entirely from Node.js.
+      // Subscribe to both the Extension stream (for orbit:state-changed events)
+      // and the Isolate stream (for IsolateReload / ServiceExtensionAdded events
+      // so we can resubscribe and refetch after a hot-reload).
       this._wsSend({ jsonrpc: '2.0', method: 'getVM', params: {}, id: 'getVM' });
       this._wsSend({ jsonrpc: '2.0', method: 'streamListen', params: { streamId: 'Extension' }, id: 'subExt' });
+      this._wsSend({ jsonrpc: '2.0', method: 'streamListen', params: { streamId: 'Isolate' }, id: 'subIsolate' });
     });
 
     this._ws.on('message', (data) => this._handleVmMessage(data));
@@ -574,21 +578,51 @@ class OrbitStateWebviewProvider {
       }
     }
 
-    // Real-time state change events
+    // Real-time state change events and isolate lifecycle events
     if (response.method === 'streamNotify' && response.params) {
       const { streamId, event: eventData } = response.params;
+
+      // Extension stream: orbit:state-changed → debounce a fetch
       if (streamId === 'Extension' && eventData && eventData.extensionKind === 'orbit:state-changed') {
         // Debounce fetches so rapid mutations (e.g. 60fps timers, stream
         // providers) don't generate one VM round-trip per frame.
         this._scheduleFetch();
       }
+
+      // Isolate stream: resubscribe + refetch on hot-reload or when
+      // ext.orbit.getStores is first registered (i.e. when Orbit.use() is called).
+      if (streamId === 'Isolate' && eventData) {
+        const kind = eventData.kind;
+        if (kind === 'IsolateReload') {
+          // Hot-reload drops all Extension stream subscriptions on the Dart side;
+          // resubscribe immediately so we don't miss any post-reload events.
+          this._wsSend({ jsonrpc: '2.0', method: 'streamListen', params: { streamId: 'Extension' }, id: 'subExt' });
+          this._fetchRetries = 0;
+          this._scheduleFetch();
+        }
+        // ServiceExtensionAdded fires the moment Orbit.use() registers
+        // ext.orbit.getStores — crucial for the race where the extension
+        // connects before the Flutter app has called Orbit.use() at all.
+        if (kind === 'ServiceExtensionAdded' &&
+            eventData.extensionRPC === 'ext.orbit.getStores') {
+          this._fetchRetries = 0;
+          this._scheduleFetch();
+        }
+      }
     }
-    
+
     // Handle subExt response
     if (response.id === 'subExt' && response.error) {
       // 103 means "Stream already subscribed", which is harmless
       if (response.error.code !== 103) {
-        console.warn('Orbit Extension: streamListen failed:', response.error.message);
+        console.warn('Orbit Extension: streamListen(Extension) failed:', response.error.message);
+      }
+    }
+
+    // Handle subIsolate response
+    if (response.id === 'subIsolate' && response.error) {
+      if (response.error.code !== 103) {
+        console.warn('Orbit Extension: streamListen(Isolate) failed:', response.error.message);
       }
     }
   }

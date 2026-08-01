@@ -1,3 +1,9 @@
+## 0.5.3
+
+- **Fix (`OrbitStore.mutate` / `mutateAsync`)**: `developer.postEvent` (which drives the VS Code state inspector) was silently gated behind the `debugLogging || _hasObservers` tracking flag. It now always fires in non-release builds regardless of whether debug logging or observers are active, so the extension panel stays live even when `Orbit.debugLogging = false`.
+- **Fix (VS Code Extension)**: Flutter hot-reload resets Dart VM stream subscriptions, causing the extension to go permanently blind after the first reload. The extension now subscribes to the `Isolate` VM stream, resubscribes to the `Extension` stream and re-fetches stores on every `IsolateReload` event.
+- **Fix (VS Code Extension)**: Resolved a startup race condition where the extension connected before `Orbit.use()` was called. The extension now listens for `ServiceExtensionAdded` on the `Isolate` stream and fetches stores the moment `ext.orbit.getStores` becomes available.
+
 ## 0.5.2
 
 - **Fix (VS Code Extension)**: Added depth limit (8 levels) to the state tree renderer to prevent a call-stack overflow when inspecting deeply-nested store state objects.
