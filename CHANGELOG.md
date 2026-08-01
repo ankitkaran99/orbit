@@ -1,6 +1,8 @@
 ## 0.5.4
 
 - **Fix (VS Code Extension)**: The Refresh button silently did nothing when the isolate ID was not yet acquired (e.g., on first connect or after app restart). It now re-requests `getVM` to re-acquire the isolate ID before fetching. Manual refresh also resets the exponential backoff counter so stale exhausted retries never block a new attempt.
+- **Docs**: Added a dedicated **VS Code State Inspector** section to `README.md` explaining each badge (State tree, Ready, Listeners, Scoped/Global), how the inspector stays live across hot-reloads and startup races, and how to populate the state tree via `debugSnapshot()`.
+- **Docs**: Added a note under the debug logging section clarifying why the `notified N listeners` count in the console log may differ from the **Listeners** badge in the VS Code inspector (mutation-time snapshot vs. live poll ~150 ms later).
 
 ## 0.5.3
 
