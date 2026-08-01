@@ -13,6 +13,12 @@ Provides a **real-time live preview** of state trees for **both Global singleton
 - **Automatic Disambiguation**: Differentiates multiple active scoped instances of the same store class using unique instance identifiers (`StoreName (#hex)`).
 - **Zero Configuration**: Connects automatically to running Flutter debug sessions via the Dart VM Service.
 
+![Orbit State Inspector](screenshot.png)
+
+> **Note — listener count in console logs vs. the State Inspector**
+>
+> The `notified N listeners` figure in console logs is captured at the exact instant `mutate()` is called — it is a historical snapshot of how many listeners were attached *at that moment*. The **Listeners** badge in this extension's inspector reflects the live count at the time of the polling request (~150 ms later). By then additional `OrbitBuilder`/`OrbitSelector` widgets may have subscribed in response to the notification, so the two numbers can legitimately differ. Both are accurate — they just measure different points in time.
+
 ### 🚀 Snippets
 Type any of the following prefixes in `.dart` files:
 
