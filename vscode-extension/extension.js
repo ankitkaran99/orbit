@@ -420,7 +420,17 @@ class OrbitStateWebviewProvider {
           this._disconnectWs();
           break;
         case 'fetchStores':
-          this._fetchStores();
+          // Manual refresh always starts with a clean slate:
+          // reset backoff so stale exhausted retries don't block the new attempt.
+          this._fetchRetries = 0;
+          if (this._isolateId) {
+            this._fetchStores();
+          } else if (this._connected) {
+            // _isolateId can be null if getVM hasn't responded yet or the
+            // app restarted — re-request it; _fetchStores() will be called
+            // automatically once getVM response arrives with a valid isolate.
+            this._wsSend({ jsonrpc: '2.0', method: 'getVM', params: {}, id: 'getVM' });
+          }
           break;
       }
     });

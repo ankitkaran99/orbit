@@ -1,3 +1,7 @@
+## 0.5.4
+
+- **Fix (VS Code Extension)**: The Refresh button silently did nothing when the isolate ID was not yet acquired (e.g., on first connect or after app restart). It now re-requests `getVM` to re-acquire the isolate ID before fetching. Manual refresh also resets the exponential backoff counter so stale exhausted retries never block a new attempt.
+
 ## 0.5.3
 
 - **Fix (`OrbitStore.mutate` / `mutateAsync`)**: `developer.postEvent` (which drives the VS Code state inspector) was silently gated behind the `debugLogging || _hasObservers` tracking flag. It now always fires in non-release builds regardless of whether debug logging or observers are active, so the extension panel stays live even when `Orbit.debugLogging = false`.

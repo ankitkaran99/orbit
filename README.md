@@ -453,9 +453,61 @@ Orbit.clearChangeLog();          // Clear history (e.g., in test tearDown)
 Orbit.debugLogging = false;       // Turn off debug logging
 ```
 
+> **Note — listener count in logs vs. the VS Code inspector**
+>
+> The `notified N listeners` figure in the console log is captured at the
+> exact instant `mutate()` is called — it is a historical snapshot of
+> how many listeners were attached *at that moment*. The **Listeners**
+> badge in the VS Code State Inspector reflects the live count at the
+> time the inspector's polling request arrives, which is typically
+> ~150 ms later. By then additional `OrbitBuilder`/`OrbitSelector`
+> widgets may have subscribed in response to the previous notification,
+> so the two numbers can legitimately differ. Both are accurate — they
+> just measure different points in time.
+
 ---
 
-### 12. Compile-time Safety & Safe Lookups
+### 12. VS Code State Inspector
+
+The official [Orbit VS Code Extension](https://github.com/ankitkaran99/orbit/tree/main/vscode-extension) provides a live state panel that connects to your running Flutter debug session automatically.
+
+#### What each field means
+
+| Field | Description |
+| :--- | :--- |
+| **State tree** | The value returned by `debugSnapshot()` at the time of the last poll, rendered as a collapsible tree. |
+| **Ready** | Whether `store.isReady` is `true` (i.e. `init()` has completed successfully). |
+| **Listeners** | `_listenerCount` at the moment the inspector polled — the number of `OrbitBuilder` / `OrbitSelector` widgets (and any manual `addListener` calls) currently subscribed. May differ from the console log's `notified N listeners` because they are measured at different points in time (see note above). |
+| **Scoped / Global** | Whether the store is a scoped instance created by `OrbitScope` or the app-wide singleton registered via `Orbit.use`. |
+
+#### How the inspector stays live
+
+- **Mutations** — every `mutate()` / `mutateAsync()` call fires a `developer.postEvent('orbit:state-changed')` in non-release builds. The extension receives this via the Dart VM `Extension` stream and debounces a `getStores` poll (150 ms).
+- **Hot reload** — the Dart VM drops all `Extension` stream subscriptions on reload. The extension listens on the `Isolate` stream for `IsolateReload` events, automatically resubscribes, and re-fetches stores.
+- **Startup race** — if the extension connects before `Orbit.use()` has been called, it waits for a `ServiceExtensionAdded` event for `ext.orbit.getStores` and fetches immediately when that fires.
+- **Refresh button** — triggers a fresh `getStores` poll, resetting the retry backoff. If the isolate ID is not yet available it re-requests `getVM` first.
+
+#### Showing state in the inspector
+
+Override `debugSnapshot()` in your store to populate the tree:
+
+```dart
+class CounterStore extends OrbitStore {
+  int _count = 0;
+  int get count => _count;
+
+  void increment() => mutate(() => _count++);
+
+  @override
+  Map<String, Object?> debugSnapshot() => {'count': _count};
+}
+```
+
+Without `debugSnapshot()` the state tree shows *Empty state*. The snapshot is only evaluated when `debugLogging` is on or at least one `Orbit.observe` callback is registered — it is never called in release builds.
+
+---
+
+### 13. Compile-time Safety & Safe Lookups
 
 Orbit prioritizes compile-time safety to prevent common state management bugs like `ProviderNotFoundException` or runtime lookup crashes. By utilizing `OrbitStoreRef` (returned from `defineStore`), you get crash-free context lookups.
 
@@ -485,7 +537,7 @@ final storeRead = context.orbitRead(counterStore);
 
 ---
 
-### 13. Testing & Mocking
+### 14. Testing & Mocking
 
 Swap stores with mock or fake implementations for widget testing:
 
