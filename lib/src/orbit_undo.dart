@@ -1,4 +1,4 @@
-part of orbit;
+part of '../orbit.dart';
 
 /// Represents a single record in Orbit's global undo/redo history.
 class OrbitUndoEntry {

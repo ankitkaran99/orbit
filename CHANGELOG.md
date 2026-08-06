@@ -1,3 +1,7 @@
+## 0.6.1
+
+- **Fix (`lib/src/orbit_undo.dart`)**: Updated `part of` directive to use URI reference (`part of '../orbit.dart';`) to resolve pub.dev static analysis lint.
+
 ## 0.6.0
 
 - **Feature (`Undoable` & `Orbit.undo`/`Orbit.redo`)**: Added full undo/redo history support via the `Undoable` mixin and static history controls `Orbit.undo()`, `Orbit.redo()`, `Orbit.canUndo`, `Orbit.canRedo`, and `Orbit.undoStackLimit` (default 50).
