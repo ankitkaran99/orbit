@@ -20,7 +20,7 @@ Add Orbit to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  orbit_state: ^0.5.3
+  orbit_state: ^0.6.0
 ```
 
 ---
@@ -29,7 +29,7 @@ dependencies:
 
 ### 1. Declare a Store
 
-Store state is kept in **private fields** exposed via **public getters**. State modifications happen exclusively through `@protected` `mutate()` / `mutateAsync()` methods.
+Store state is kept in **private fields** exposed via **public getters**. State modifications happen exclusively through `@protected` `mutate()` method (which handles both synchronous and asynchronous actions).
 
 Computed values are plain Dart getters — no special syntax required.
 
@@ -47,16 +47,22 @@ class CounterStore extends OrbitStore {
   // Synchronous mutation (label is auto-inferred as 'increment' if omitted)
   int increment() => mutate(() => ++_count);
 
-  // Asynchronous mutation (explicit label override)
-  Future<int> fetchAndSet(Future<int> Function() apiCall) async {
-    return await mutateAsync(() async {
-      _count = await apiCall();
-      return _count;
-    }, label: 'fetchAndSet');
+  // Asynchronous mutation (action -> apply -> onError)
+  Future<void> createInvoice(String customerId, List<Item> items) async {
+    await mutateAsync(
+      action: () async {
+        final customer = await api.validateCustomer(customerId);
+        final invoice = await api.createInvoice(customer, items);
+        await api.sendInvoiceEmail(invoice);       // fire multiple sequential calls
+        return invoice;                            // whatever you return flows into apply
+      },
+      apply: (invoice) => _invoices.add(invoice),   // single, safe commit at the end
+      onError: (e, st) => showToast('Invoice creation failed'),
+    );
   }
 
   @override
-  Map<String, Object?> debugSnapshot() => {'count': _count};
+  Map<String, Object?> snapshot() => {'count': _count};
 }
 
 // Define the store once for global access
@@ -423,7 +429,118 @@ Active timers are **automatically cancelled** when the store is disposed (e.g., 
 
 ---
 
-### 11. Mutation Middleware & Debugging
+### 11. Batching Updates (`Orbit.batch` / `store.batch`)
+
+When multiple mutations occur together, Orbit allows you to batch them so that `notifyListeners()` is deferred until the batch closes. This avoids unnecessary intermediate widget rebuilds — producing **exactly 1 notification per affected store** regardless of how many mutations ran inside.
+
+#### Global Batching (`Orbit.batch`)
+Defers notifications across all stores mutated inside the batch. All affected stores are deduped and flushed once when the outermost global batch closes. Pass an optional `label:` parameter to identify the batch in watchdog warnings:
+
+```dart
+// Multiple mutations across stores result in exactly 1 rebuild per store:
+Orbit.batch(() {
+  userStore.updateName('Alice');
+  cartStore.addItem(item1);
+  cartStore.addItem(item2);
+  settingsStore.toggleDarkMode();
+}, label: 'checkout_init');
+```
+
+#### Store-Scoped Batching (`store.batch`)
+Defers notifications for that specific store only. Mutations on other stores inside notify immediately as normal:
+
+```dart
+userStore.batch(() {
+  userStore.updateFirstName('Alice');
+  userStore.updateLastName('Smith');
+}, label: 'update_user_name');
+```
+
+#### Guidelines: Keep Batch Bodies Fast
+> **Performance Tip**: Batch bodies defer UI rebuilds while open. Keep batch bodies fast and synchronous where possible. For long-running sequential asynchronous operations, put the slow async work inside `mutateAsync`'s `action` parameter instead of holding a batch open.
+
+#### Configuring the Debug Watchdog (`OrbitBatchWatchdog`)
+In debug mode (`kDebugMode`), Orbit automatically monitors open batches. If a batch remains open longer than `warnAfter` (default `5 seconds`), a warning message is emitted with the stack trace of where the batch opened.
+
+You can customize the warning threshold or callback (e.g. during app initialization or in test setup):
+
+```dart
+void main() {
+  // Custom threshold (e.g. warn if a batch stays open longer than 2 seconds)
+  OrbitBatchWatchdog.warnAfter = const Duration(seconds: 2);
+
+  // Custom warning handler (e.g. forward to custom logger)
+  OrbitBatchWatchdog.onWarning = (message) {
+    logger.warning(message);
+  };
+
+  runApp(const MyApp());
+}
+```
+
+The watchdog is a zero-overhead no-op in release builds (no timers constructed).
+
+---
+
+### 12. Undo / Redo Support (`Undoable`, `Orbit.undo()`, `Orbit.redo()`)
+
+Orbit provides built-in, global undo/redo history for any store that opts in via the `Undoable` mixin.
+
+#### 1. Opt a Store into Undo/Redo
+Mix `Undoable` into your `OrbitStore` and implement `snapshot()` (to capture state) and `restore()` (to apply state back):
+
+```dart
+class CanvasStore extends OrbitStore with Undoable {
+  Color _color = Colors.blue;
+  double _size = 10.0;
+
+  Color get color => _color;
+  double get size => _size;
+
+  void updateColor(Color newColor) => mutate(() => _color = newColor);
+  void updateSize(double newSize) => mutate(() => _size = newSize);
+
+  @override
+  Map<String, Object?> snapshot() => {
+        'color': _color,
+        'size': _size,
+      };
+
+  @override
+  void restore(Map<String, Object?> state) {
+    _color = state['color'] as Color;
+    _size = state['size'] as double;
+  }
+}
+```
+
+> **Note**: In v0.6.0, `debugSnapshot()` was renamed to `snapshot()` to serve as the unified contract for both DevTools/observe state logging and `Undoable` state restoration.
+
+#### 2. Triggering Undo & Redo
+Call `Orbit.undo()` or `Orbit.redo()` from anywhere in your app (e.g. keyboard shortcuts or toolbar buttons):
+
+```dart
+Row(
+  children: [
+    IconButton(
+      icon: const Icon(Icons.undo),
+      onPressed: Orbit.canUndo ? () => Orbit.undo() : null,
+    ),
+    IconButton(
+      icon: const Icon(Icons.redo),
+      onPressed: Orbit.canRedo ? () => Orbit.redo() : null,
+    ),
+  ],
+)
+```
+
+- **Stack Capacity**: Defaults to 50 steps. Bounded via `Orbit.undoStackLimit = 100;`.
+- **Reentrancy Safe**: `Orbit.undo()` and `Orbit.redo()` execute through `mutate()` so widgets re-render reactively, but do not push extra entries onto the history stack.
+- **Fresh Mutations**: Any fresh mutation after an undo automatically invalidates the redo history stack.
+
+---
+
+### 13. Mutation Middleware & Debugging
 
 Register middleware to observe all mutations across all stores (ideal for logging, analytics, and offline persistence):
 
@@ -465,7 +582,7 @@ Orbit.debugLogging = false;       // Turn off debug logging
 > so the two numbers can legitimately differ. Both are accurate — they
 > just measure different points in time.
 
-### 12. Compile-time Safety & Safe Lookups
+### 14. Compile-time Safety & Safe Lookups
 
 Orbit prioritizes compile-time safety to prevent common state management bugs like `ProviderNotFoundException` or runtime lookup crashes. By utilizing `OrbitStoreRef` (returned from `defineStore`), you get crash-free context lookups.
 
@@ -495,7 +612,7 @@ final storeRead = context.orbitRead(counterStore);
 
 ---
 
-### 13. Testing & Mocking
+### 15. Testing & Mocking
 
 Swap stores with mock or fake implementations for widget testing:
 
@@ -522,10 +639,16 @@ void main() {
 
 | Class / Method | Description |
 | :--- | :--- |
-| `OrbitStore` | Base store class with private state, `@protected mutate<R>()`, `init()`, `onDispose()`, and `onResume()`. |
+| `OrbitStore` | Base store class with private state, `@protected mutate<R>()`, `@protected mutateAsync<T>()`, `init()`, `onDispose()`, and `onResume()`. |
 | `OrbitStore.watch(storeRef, onChange)` | Subscribes a store to changes in another global store and cleans up automatically on dispose. |
 | `OrbitStore.debounce(id, duration, action)` | Executes an action after a specified duration of inactivity. Cancels pending execution when called again. |
 | `OrbitStore.throttle(id, duration, action)` | Executes an action immediately and ignores subsequent calls for the specified duration. |
+| `Orbit.batch(fn)` / `store.batch(fn)` | Defers `notifyListeners()` across all stores (global) or a single store (scoped) until the batch closes, flushing deduped updates. |
+| `OrbitBatchWatchdog` | Configures debug-mode watchdog threshold (`warnAfter`, default 5s) and warning callback (`onWarning`). |
+| `Undoable` mixin | Opts an `OrbitStore` into global undo/redo history. Requires implementing `snapshot()` and `restore()`. |
+| `Orbit.undo()` / `Orbit.redo()` | Reverts or re-applies the most recent mutation across all `Undoable` stores. |
+| `Orbit.canUndo` / `Orbit.canRedo` | Returns whether there are mutations available to undo or redo. |
+| `Orbit.undoStackLimit` | Maximum number of undo history steps retained (default 50). |
 | `defineStore(factory)` | Defines a typed reference (`OrbitStoreRef<T>`) to a global store. |
 | `OrbitStoreRef.of(context)` | Type-safe, crash-free lookup that returns scoped store or falls back to global singleton. |
 | `OrbitBuilder<T>` | Listens to store `T` and rebuilds on change. Supports `child` subtree caching. |

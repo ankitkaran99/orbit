@@ -13,7 +13,7 @@
       "  }",
       "",
       "  @override",
-      "  Map<String, Object?> debugSnapshot() => {'${3:value}': _${3:value}};",
+      "  Map<String, Object?> snapshot() => {'${3:value}': _${3:value}};",
       "}",
       "",
       "final ${1/(.*)/${1:/camelcase}/}Store = defineStore(() => ${1:Counter}Store());"
@@ -46,12 +46,12 @@
       "  }",
       "",
       "  @override",
-      "  Map<String, Object?> debugSnapshot() => {'${3:isLoading}': _${3:isLoading}};",
+      "  Map<String, Object?> snapshot() => {'${3:isLoading}': _${3:isLoading}};",
       "}",
       "",
       "final ${1/(.*)/${1:/camelcase}/}Store = defineStore(() => ${1:User}Store());"
     ],
-    "description": "Creates an OrbitStore with lifecycle hooks (init, onResume, onDispose) and debugSnapshot"
+    "description": "Creates an OrbitStore with lifecycle hooks (init, onResume, onDispose) and snapshot"
   },
   "Orbit Builder": {
     "prefix": "os-builder",
@@ -148,16 +148,16 @@
     "body": [
       "mutate(() => _${1:state} = ${2:newValue});"
     ],
-    "description": "Inserts a synchronous mutate call inside OrbitStore"
+    "description": "Inserts a mutate call inside OrbitStore"
   },
   "Orbit Mutate Async": {
     "prefix": "os-mutate-async",
     "body": [
-      "await mutateAsync(() async {",
+      "await mutate(() async {",
       "  ${1:// async work}",
       "});"
     ],
-    "description": "Inserts an asynchronous mutateAsync call inside OrbitStore"
+    "description": "Inserts an asynchronous mutate call inside OrbitStore"
   },
   "Orbit Observer Middleware": {
     "prefix": "os-observe",

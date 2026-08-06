@@ -87,33 +87,42 @@ class OrbitScope<T extends OrbitStore> extends StatefulWidget {
 }
 
 class _OrbitScopeState<T extends OrbitStore> extends State<OrbitScope<T>> {
-  late final T _store;
+  // Nullable rather than `late final`: if widget.create() itself throws
+  // (below), this field must never be accessed uninitialized — dispose()
+  // may still be called on a State whose initState() didn't finish, and a
+  // LateInitializationError there would mask the real error from create()
+  // with a confusing, unrelated secondary crash.
+  T? _store;
 
   @override
   void initState() {
     super.initState();
-    _store = widget.create();
-    Orbit._registerScopedStore(_store);
+    final store = widget.create();
+    _store = store;
+    Orbit._registerScopedStore(store);
     try {
-      _store._runInit();
+      store._runInit();
     } catch (_) {
-      Orbit._unregisterScopedStore(_store);
-      _store.dispose();
+      Orbit._unregisterScopedStore(store);
+      store.dispose();
       rethrow;
     }
   }
 
   @override
   void dispose() {
-    Orbit._unregisterScopedStore(_store);
-    _store.dispose();
+    final store = _store;
+    if (store != null) {
+      Orbit._unregisterScopedStore(store);
+      store.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return _OrbitScopeInherited<T>(
-      store: _store,
+      store: _store!,
       child: widget.child,
     );
   }

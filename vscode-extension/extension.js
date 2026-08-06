@@ -264,7 +264,7 @@ class ${pascalName} extends OrbitStore {
   }
 
   @override
-  Map<String, Object?> debugSnapshot() => {'counter': _counter};
+  Map<String, Object?> snapshot() => {'counter': _counter};
 }
 
 final ${camelRef} = defineStore(() => ${pascalName}());

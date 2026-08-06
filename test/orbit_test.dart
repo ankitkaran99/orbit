@@ -16,18 +16,31 @@ class CounterStore extends OrbitStore {
 
   R runMutate<R>(R Function() action) => mutate(action);
 
-  Future<R> runMutateAsync<R>(Future<R> Function() action) =>
-      mutateAsync(action);
+  Future<R> runMutateAsync<R>(Future<R> Function() action) => mutate(action);
 
   Future<void> incrementAsync() async {
-    await mutateAsync(() async {
+    await mutate(() async {
       await Future<void>.delayed(Duration.zero);
       _count++;
     });
   }
 
+  Future<void> fetchAndIncrement() async {
+    await mutateAsync<int>(
+      action: () async => 5,
+      apply: (res) => _count += res,
+    );
+  }
+
+  Future<void> runMutateAsyncTyped<T>({
+    required Future<T> Function() action,
+    required void Function(T result) apply,
+    void Function(Object error, StackTrace stack)? onError,
+  }) =>
+      mutateAsync<T>(action: action, apply: apply, onError: onError);
+
   @override
-  Map<String, Object?> debugSnapshot() => {'count': _count};
+  Map<String, Object?> snapshot() => {'count': _count};
 
   @override
   FutureOr<void> init() {
@@ -100,7 +113,9 @@ void main() {
       expect(notified, 1);
     });
 
-    test('mutateAsync() notifies once the awaited action completes', () async {
+    test(
+        'mutate() with async action notifies once the awaited action completes',
+        () async {
       final store = Orbit.use<CounterStore>(() => CounterStore());
       var notified = 0;
       store.addListener(() => notified++);
@@ -109,6 +124,35 @@ void main() {
 
       expect(store.count, 1);
       expect(notified, 1);
+    });
+
+    test('mutateAsync({action, apply, onError}) updates state on success',
+        () async {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      var notified = 0;
+      store.addListener(() => notified++);
+
+      await store.fetchAndIncrement();
+
+      expect(store.count, 5);
+      expect(notified, 1);
+    });
+
+    test('mutateAsync({action, apply, onError}) handles error via onError',
+        () async {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      var errorCaught = false;
+
+      await store.runMutateAsyncTyped<int>(
+        action: () async => throw StateError('fetch failed'),
+        apply: (res) => store.runMutate(() {}),
+        onError: (err, st) {
+          errorCaught = true;
+          expect(err, isA<StateError>());
+        },
+      );
+
+      expect(errorCaught, isTrue);
     });
 
     test(
@@ -224,7 +268,7 @@ void main() {
 
   group('debug logging & observe()', () {
     test(
-        'mutate() records a change with a diff when debugSnapshot '
+        'mutate() records a change with a diff when snapshot '
         'is overridden', () {
       Orbit.debugLogging = true;
       final store = Orbit.use<CounterStore>(() => CounterStore());
@@ -438,7 +482,7 @@ void main() {
   });
 
   group('bug fixes & optimizations', () {
-    test('mutate and mutateAsync return action result', () async {
+    test('mutate returns action result (sync and async)', () async {
       final store = Orbit.use<CounterStore>(() => CounterStore());
 
       final val = store.runMutate(() => 42);

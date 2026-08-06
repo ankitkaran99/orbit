@@ -26,6 +26,7 @@ class Orbit {
 
   static void _unregisterScopedStore(OrbitStore store) {
     _scopedStores.remove(store);
+    _purgeUndoEntriesFor(store);
   }
 
   static bool _serviceExtensionRegistered = false;
@@ -42,9 +43,9 @@ class Orbit {
           final store = entry.value;
           Object? snapshot;
           try {
-            snapshot = _jsonSafe(store.debugSnapshot());
+            snapshot = _jsonSafe(store.snapshot());
           } catch (error) {
-            snapshot = {'_error': 'debugSnapshot() threw: $error'};
+            snapshot = {'_error': 'snapshot() threw: $error'};
           }
           storesData[typeName] = {
             'state': snapshot ?? {},
@@ -61,9 +62,9 @@ class Orbit {
 
           Object? snapshot;
           try {
-            snapshot = _jsonSafe(store.debugSnapshot());
+            snapshot = _jsonSafe(store.snapshot());
           } catch (error) {
-            snapshot = {'_error': 'debugSnapshot() threw: $error'};
+            snapshot = {'_error': 'snapshot() threw: $error'};
           }
 
           storesData[displayName] = {
@@ -90,7 +91,7 @@ class Orbit {
     } catch (_) {}
   }
 
-  /// Recursively coerces a [debugSnapshot] result into JSON-safe values,
+  /// Recursively coerces a [OrbitStore.snapshot] result into JSON-safe values,
   /// falling back to [Object.toString] for anything [jsonEncode] can't
   /// handle on its own.
   static Object? _jsonSafe(Object? value) {
@@ -114,6 +115,169 @@ class Orbit {
   /// Exposed helper for testing [_jsonSafe] directly.
   @visibleForTesting
   static Object? jsonSafeForTest(Object? value) => _jsonSafe(value);
+
+  // ---- Global Batching -------------------------------------------
+
+  static int _globalBatchDepth = 0;
+  static final Set<OrbitStore> _globalPendingStores =
+      HashSet<OrbitStore>.identity();
+  static Timer? _globalWatchdogTimer;
+
+  /// Runs [fn] inside a global batch.
+  ///
+  /// Any store mutated while the batch is open has its `notifyListeners()` deferred.
+  /// Once the outermost global batch closes, all affected stores are deduped and flushed
+  /// exactly once.
+  static FutureOr<T> batch<T>(
+    FutureOr<T> Function() fn, {
+    String? label,
+  }) {
+    final effectiveLabel = label ?? 'Orbit.batch';
+    _openGlobalBatch(effectiveLabel);
+
+    try {
+      final result = fn();
+      if (result is Future) {
+        return (result as Future).whenComplete(() {
+          _closeGlobalBatch();
+        }) as FutureOr<T>;
+      }
+      _closeGlobalBatch();
+      return result;
+    } catch (error) {
+      _closeGlobalBatch();
+      rethrow;
+    }
+  }
+
+  static void _openGlobalBatch(String label) {
+    _globalBatchDepth++;
+    if (_globalBatchDepth == 1) {
+      if (kDebugMode) {
+        final trace = StackTrace.current;
+        _globalWatchdogTimer = Timer(OrbitBatchWatchdog.warnAfter, () {
+          final message = 'WARNING: Orbit batch "$label" has been open for '
+              'longer than ${OrbitBatchWatchdog.warnAfter.inSeconds} seconds.\n'
+              'Batch opened at:\n$trace\n'
+              'Hint: Keep batch bodies fast. Slow async work belongs inside '
+              'mutateAsync\'s action parameter, not inside a batch body.';
+          OrbitBatchWatchdog.onWarning(message);
+        });
+      }
+    }
+  }
+
+  static void _closeGlobalBatch() {
+    if (_globalBatchDepth <= 0) return;
+    _globalBatchDepth--;
+    if (_globalBatchDepth == 0) {
+      _globalWatchdogTimer?.cancel();
+      _globalWatchdogTimer = null;
+
+      if (_globalPendingStores.isNotEmpty) {
+        final pending = List<OrbitStore>.from(_globalPendingStores);
+        _globalPendingStores.clear();
+
+        for (final store in pending) {
+          store._scopedPendingNotify = false;
+          if (!store._disposed) {
+            store._dispatchNotify();
+          }
+        }
+      }
+    }
+  }
+
+  // ---- Undo / Redo Stacks -------------------------------------------
+
+  /// Maximum number of undo steps retained in history (default 50).
+  static int undoStackLimit = 50;
+
+  static bool _isRestoring = false;
+  static final List<OrbitUndoEntry> _undoStack = [];
+  static final List<OrbitUndoEntry> _redoStack = [];
+
+  /// Whether there is at least one mutation that can be undone.
+  static bool get canUndo => _undoStack.isNotEmpty;
+
+  /// Whether there is at least one undone mutation that can be redone.
+  static bool get canRedo => _redoStack.isNotEmpty;
+
+  /// Internal — called only from Undoable.mutate().
+  static void _pushUndo(OrbitUndoEntry entry) {
+    if (_isRestoring) return;
+    _undoStack.add(entry);
+    if (_undoStack.length > undoStackLimit) {
+      _undoStack.removeAt(0);
+    }
+    _redoStack.clear();
+  }
+
+  /// Removes any undo/redo entries referencing [store]. Called whenever a
+  /// store is individually disposed (`reset`, `override`, or a scoped
+  /// store leaving the tree) so a dead store isn't held onto by the
+  /// stacks — `undo()`/`redo()` already handle a disposed entry safely if
+  /// encountered lazily, but there's no reason to keep it around until
+  /// then when we already know at dispose time.
+  static void _purgeUndoEntriesFor(OrbitStore store) {
+    if (_undoStack.isEmpty && _redoStack.isEmpty) return;
+    _undoStack.removeWhere((entry) => identical(entry.store, store));
+    _redoStack.removeWhere((entry) => identical(entry.store, store));
+  }
+
+  /// Reverts the most recent mutation across all [Undoable] stores.
+  ///
+  /// If the store's [Undoable.restore] override throws, that's surfaced as
+  /// a normal failed mutation (recorded in [Orbit.changeLog] /
+  /// [Orbit.observe] with label `'undo'`, same as any other throwing
+  /// `mutate()` call) and rethrown to the caller. The entry is popped
+  /// before [Undoable.restore] runs and is deliberately NOT restored to
+  /// either stack on failure — [restore] bugs are deterministic, so
+  /// retrying the same entry would just fail the same way again, and
+  /// keeping a known-broken entry on top of the stack would permanently
+  /// block undoing anything older underneath it. Dropping it lets the
+  /// next `undo()` call reach the next, presumably-good entry instead.
+  static void undo() {
+    if (_undoStack.isEmpty) return;
+    final entry = _undoStack.removeLast();
+    if (entry.store._disposed) return;
+
+    _isRestoring = true;
+    try {
+      entry.store.mutate(
+        () => (entry.store as Undoable).restore(entry.before),
+        label: 'undo',
+      );
+      _redoStack.add(entry);
+    } finally {
+      _isRestoring = false;
+    }
+  }
+
+  /// Re-applies the most recently undone mutation.
+  ///
+  /// Same failure handling as [undo]: a throwing [Undoable.restore]
+  /// surfaces as a normal failed, logged mutation and the entry is
+  /// dropped rather than retried, for the same reason.
+  static void redo() {
+    if (_redoStack.isEmpty) return;
+    final entry = _redoStack.removeLast();
+    if (entry.store._disposed) return;
+
+    _isRestoring = true;
+    try {
+      entry.store.mutate(
+        () => (entry.store as Undoable).restore(entry.after),
+        label: 'redo',
+      );
+      _undoStack.add(entry);
+      if (_undoStack.length > undoStackLimit) {
+        _undoStack.removeAt(0);
+      }
+    } finally {
+      _isRestoring = false;
+    }
+  }
 
   // ---- Debugging & middleware -------------------------------------
 
@@ -179,8 +343,8 @@ class Orbit {
           'store': typeName,
           'storeKey': storeKey,
           'action': mutation.action,
-          // Reuse the snapshot mutate()/mutateAsync() already took instead of
-          // calling the (potentially expensive) debugSnapshot() a 3rd time.
+          // Reuse the snapshot mutate() already took instead of
+          // calling the (potentially expensive) snapshot() a 3rd time.
           'state': mutation.after ?? {},
         });
       } catch (_) {}
@@ -239,7 +403,11 @@ class Orbit {
   /// setUp(() => Orbit.override<CounterStore>(FakeCounterStore()));
   /// ```
   static void override<T extends OrbitStore>(T instance) {
-    _stores.remove(T)?.dispose();
+    final old = _stores.remove(T);
+    if (old != null) {
+      old.dispose();
+      _purgeUndoEntriesFor(old);
+    }
     _stores[T] = instance;
     try {
       instance._runInit();
@@ -255,7 +423,10 @@ class Orbit {
   /// [OrbitStore.onDispose] on the way out.
   static void reset<T extends OrbitStore>() {
     final store = _stores.remove(T);
-    store?.dispose();
+    if (store != null) {
+      store.dispose();
+      _purgeUndoEntriesFor(store);
+    }
   }
 
   /// Disposes and clears every registered store. Mainly useful in test
@@ -264,6 +435,13 @@ class Orbit {
   /// Note: does NOT clear [changeLog] — call [clearChangeLog] explicitly
   /// if you also want to reset the mutation history.
   static void resetAll() {
+    _globalBatchDepth = 0;
+    _globalPendingStores.clear();
+    _globalWatchdogTimer?.cancel();
+    _globalWatchdogTimer = null;
+    _undoStack.clear();
+    _redoStack.clear();
+    _isRestoring = false;
     final stores = List<OrbitStore>.of(_stores.values);
     _stores.clear();
     for (final store in stores) {

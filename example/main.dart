@@ -30,10 +30,9 @@ class CounterStore extends OrbitStore {
   @override
   void onDispose() => debugPrint('CounterStore disposed');
 
-  // Optional: powers Orbit.observe()/changeLog diffing. Without this,
-  // logs still show which action ran, just not the field-level diff.
+  // Optional: powers Orbit.observe()/changeLog diffing & Undoable state restoration.
   @override
-  Map<String, Object?> debugSnapshot() => {'count': _count};
+  Map<String, Object?> snapshot() => {'count': _count};
 }
 
 // Declare the store once — every part of the app that reaches for

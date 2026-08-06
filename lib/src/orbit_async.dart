@@ -205,7 +205,7 @@ class FutureProvider<T> extends OrbitStore {
   }
 
   @override
-  Map<String, Object?>? debugSnapshot() {
+  Map<String, Object?>? snapshot() {
     return {
       'state': _state.toString(),
     };
@@ -269,7 +269,7 @@ class StreamProvider<T> extends OrbitStore {
   }
 
   @override
-  Map<String, Object?>? debugSnapshot() {
+  Map<String, Object?>? snapshot() {
     return {
       'state': _state.toString(),
     };
@@ -492,7 +492,7 @@ class ComputedStore<T> extends OrbitStore {
   }
 
   @override
-  Map<String, Object?>? debugSnapshot() {
+  Map<String, Object?>? snapshot() {
     return {
       'state': _state,
     };

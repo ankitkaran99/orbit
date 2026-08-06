@@ -1,7 +1,7 @@
 part of '../orbit.dart';
 
-/// A single recorded mutation, produced by [OrbitStore.mutate] /
-/// [OrbitStore.mutateAsync] and passed to every `Orbit.observe`
+/// A single recorded mutation, produced by [OrbitStore.mutate]
+/// and passed to every `Orbit.observe`
 /// callback (and, in debug builds, to [Orbit.changeLog]).
 class OrbitMutation {
   OrbitMutation({
@@ -35,11 +35,11 @@ class OrbitMutation {
   final int listenerCount;
 
   /// Snapshot taken just before the mutation, if the store overrides
-  /// [OrbitStore.debugSnapshot].
+  /// [OrbitStore.snapshot].
   final Map<String, Object?>? before;
 
   /// Snapshot taken just after the mutation, if the store overrides
-  /// [OrbitStore.debugSnapshot].
+  /// [OrbitStore.snapshot].
   final Map<String, Object?>? after;
 
   /// Set if the mutation's action threw. `null` for a mutation that
@@ -54,7 +54,7 @@ class OrbitMutation {
   final StackTrace? errorStackTrace;
 
   /// Just the fields that actually changed, as `field: (old, new)`.
-  /// Empty if [OrbitStore.debugSnapshot] wasn't overridden, or nothing
+  /// Empty if [OrbitStore.snapshot] wasn't overridden, or nothing
   /// actually changed.
   late final Map<String, (Object?, Object?)> diff = _computeDiff();
 

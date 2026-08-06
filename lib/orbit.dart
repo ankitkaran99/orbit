@@ -24,3 +24,5 @@ part 'src/orbit_define.dart';
 part 'src/orbit_scope.dart';
 part 'src/orbit_context.dart';
 part 'src/orbit_async.dart';
+part 'src/orbit_batch.dart';
+part 'src/orbit_undo.dart';

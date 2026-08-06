@@ -1,3 +1,13 @@
+## 0.6.0
+
+- **Feature (`Undoable` & `Orbit.undo`/`Orbit.redo`)**: Added full undo/redo history support via the `Undoable` mixin and static history controls `Orbit.undo()`, `Orbit.redo()`, `Orbit.canUndo`, `Orbit.canRedo`, and `Orbit.undoStackLimit` (default 50).
+- **Feature (`OrbitStore.snapshot`)**: Renamed `debugSnapshot()` to `snapshot()` across all store classes and devtools inspectors as the unified snapshot contract.
+- **Feature (`Orbit.batch` & `store.batch`)**: Added global and store-scoped batching support for `FutureOr<T> Function()` callbacks, deferring `notifyListeners()` until the outermost batch closes so N mutations inside produce exactly 1 notification per affected store.
+- **Feature (`OrbitBatchWatchdog`)**: Added debug-mode watchdog alerting if a batch stays open longer than `warnAfter` (default 5s) with a captured stack trace of where the batch opened. Zero overhead in release builds (`kDebugMode`-gated).
+- **Feature (`OrbitStore.mutate`)**: `mutate()` handles both synchronous closures and asynchronous closures returning a `Future` transparently.
+- **Feature (`OrbitStore.mutateAsync`)**: Added explicit `@protected Future<void> mutateAsync<T>({required action, required apply, onError, label})` helper for complex multi-step async operations, decoupling long-running sequential calls from the final synchronous state commit.
+- **VS Code Extension**: Snippets updated for `os-mutate` and `os-mutate-async`.
+
 ## 0.5.4
 
 - **Fix (VS Code Extension)**: The Refresh button silently did nothing when the isolate ID was not yet acquired (e.g., on first connect or after app restart). It now re-requests `getVM` to re-acquire the isolate ID before fetching. Manual refresh also resets the exponential backoff counter so stale exhausted retries never block a new attempt.

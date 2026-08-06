@@ -17,13 +17,13 @@ class _Counter extends OrbitStore {
         throw StateError('boom');
       });
 
-  Future<void> incrementThenThrowAsync() => mutateAsync(() async {
+  Future<void> incrementThenThrowAsync() => mutate(() async {
         _count++;
         throw StateError('async boom');
       });
 
   @override
-  Map<String, Object?> debugSnapshot() => {'count': _count};
+  Map<String, Object?> snapshot() => {'count': _count};
 }
 
 class _ThrowingSnapshotStore extends OrbitStore {
@@ -32,14 +32,13 @@ class _ThrowingSnapshotStore extends OrbitStore {
 
   void increment() => mutate(() => _count++);
 
-  Future<void> incrementAsync() => mutateAsync(() async {
+  Future<void> incrementAsync() => mutate(() async {
         await Future<void>.delayed(Duration.zero);
         _count++;
       });
 
   @override
-  Map<String, Object?> debugSnapshot() =>
-      throw StateError('buggy debugSnapshot');
+  Map<String, Object?> snapshot() => throw StateError('buggy snapshot');
 }
 
 class _ValueEqualStore extends OrbitStore {
@@ -124,7 +123,7 @@ void main() {
       unsubscribe();
     });
 
-    test('mutateAsync() records the error the same way', () async {
+    test('mutate() with async action records the error the same way', () async {
       Orbit.debugLogging = true;
       final store = Orbit.use<_Counter>(() => _Counter());
       Orbit.clearChangeLog();
@@ -401,10 +400,10 @@ void main() {
     });
   });
 
-  group('fix: a throwing debugSnapshot() cannot block the real mutation', () {
+  group('fix: a throwing snapshot() cannot block the real mutation', () {
     test(
         'mutate() still runs the action and notifies, even if '
-        'debugSnapshot() throws', () {
+        'snapshot() throws', () {
       Orbit.debugLogging = true;
       final store =
           Orbit.use<_ThrowingSnapshotStore>(() => _ThrowingSnapshotStore());
@@ -418,7 +417,7 @@ void main() {
       store.addListener(() => notified++);
 
       try {
-        // Must NOT throw — a buggy debug-only helper must never block
+        // Must NOT throw — a buggy snapshot helper must never block
         // the real mutation from running.
         expect(() => store.increment(), returnsNormally);
       } finally {
@@ -426,14 +425,14 @@ void main() {
       }
 
       expect(store.count, 1,
-          reason: 'the action must run despite debugSnapshot() throwing');
+          reason: 'the action must run despite snapshot() throwing');
       expect(notified, 1);
       expect(errors, isNotEmpty,
-          reason: 'the debugSnapshot() bug should still be reported '
+          reason: 'the snapshot() bug should still be reported '
               'somewhere, just not by breaking the mutation');
     });
 
-    test('mutateAsync() has the same protection', () async {
+    test('mutate() with async action has the same protection', () async {
       Orbit.debugLogging = true;
       final store =
           Orbit.use<_ThrowingSnapshotStore>(() => _ThrowingSnapshotStore());

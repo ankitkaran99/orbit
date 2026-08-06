@@ -30,9 +30,10 @@ part of '../orbit.dart';
 ///   @override
 ///   void onDispose() => _subscription?.cancel();
 ///
-///   // Optional: powers Orbit.observe/changeLog diffing.
+///   // Optional: powers Orbit.observe/changeLog diffing, and undo/redo
+///   // if this store also mixes in Undoable.
 ///   @override
-///   Map<String, Object?> debugSnapshot() => {'count': _count};
+///   Map<String, Object?> snapshot() => {'count': _count};
 /// }
 /// ```
 abstract class OrbitStore extends ChangeNotifier {
@@ -143,6 +144,9 @@ abstract class OrbitStore extends ChangeNotifier {
         if (methodName.isNotEmpty &&
             methodName != 'mutate' &&
             methodName != 'mutateAsync' &&
+            methodName != 'batch' &&
+            methodName != '_onMutationError' &&
+            methodName != '_dispatchNotify' &&
             methodName != '_refresh' &&
             methodName != '_subscribe' &&
             methodName != '_recompute') {
@@ -159,33 +163,115 @@ abstract class OrbitStore extends ChangeNotifier {
     return _inferLabel(explicitLabel, trace);
   }
 
-  /// Calls [debugSnapshot], catching and reporting any exception instead
-  /// of letting it propagate. debugSnapshot() is a debug/devtools-only
-  /// helper — a bug in someone's override (a stale field reference, an
+  /// Calls [snapshot], catching and reporting any exception instead
+  /// of letting it propagate. A bug in someone's override (a stale field reference, an
   /// unfinished refactor, whatever) must never be able to block the
   /// actual mutation from running, or replace/mask a real error from
-  /// an action with an unrelated crash from this purely-for-logging call.
+  /// an action with an unrelated crash.
   Map<String, Object?>? _safeSnapshot() {
     try {
-      return debugSnapshot();
+      return snapshot();
     } catch (exception, stackTrace) {
       FlutterError.reportError(FlutterErrorDetails(
         exception: exception,
         stack: stackTrace,
         library: 'orbit',
-        context: ErrorDescription('inside debugSnapshot() for $runtimeType'),
+        context: ErrorDescription(
+            'inside snapshot() on $runtimeType — ignoring snapshot for logging'),
       ));
       return null;
     }
   }
 
+  int _scopedBatchDepth = 0;
+  bool _scopedPendingNotify = false;
+  Timer? _scopedWatchdogTimer;
+
+  /// Runs [fn] inside a store-scoped batch.
+  ///
+  /// Only notifications for this store are deferred while the batch is open.
+  /// Other stores mutated inside notify immediately as normal (unless a global
+  /// `Orbit.batch` is also active).
+  FutureOr<T> batch<T>(
+    FutureOr<T> Function() fn, {
+    String? label,
+  }) {
+    final effectiveLabel = label ?? '${runtimeType}.batch';
+    _openScopedBatch(effectiveLabel);
+
+    try {
+      final result = fn();
+      if (result is Future) {
+        return (result as Future).whenComplete(() {
+          _closeScopedBatch();
+        }) as FutureOr<T>;
+      }
+      _closeScopedBatch();
+      return result;
+    } catch (error) {
+      _closeScopedBatch();
+      rethrow;
+    }
+  }
+
+  void _openScopedBatch(String label) {
+    _scopedBatchDepth++;
+    if (_scopedBatchDepth == 1) {
+      if (kDebugMode) {
+        final trace = StackTrace.current;
+        _scopedWatchdogTimer = Timer(OrbitBatchWatchdog.warnAfter, () {
+          final message = 'WARNING: Orbit batch "$label" has been open for '
+              'longer than ${OrbitBatchWatchdog.warnAfter.inSeconds} seconds.\n'
+              'Batch opened at:\n$trace\n'
+              'Hint: Keep batch bodies fast. Slow async work belongs inside '
+              'mutateAsync\'s action parameter, not inside a batch body.';
+          OrbitBatchWatchdog.onWarning(message);
+        });
+      }
+    }
+  }
+
+  void _closeScopedBatch() {
+    if (_scopedBatchDepth <= 0) return;
+    _scopedBatchDepth--;
+    if (_scopedBatchDepth == 0) {
+      _scopedWatchdogTimer?.cancel();
+      _scopedWatchdogTimer = null;
+
+      if (Orbit._globalBatchDepth > 0) return;
+
+      if (_scopedPendingNotify) {
+        _scopedPendingNotify = false;
+        if (!_disposed) {
+          _dispatchNotify();
+        }
+      }
+    }
+  }
+
+  void _dispatchNotify() {
+    if (_disposed) return;
+    if (Orbit._globalBatchDepth > 0) {
+      Orbit._globalPendingStores.add(this);
+      _scopedPendingNotify = true;
+    } else if (_scopedBatchDepth > 0) {
+      _scopedPendingNotify = true;
+    } else {
+      _scopedPendingNotify = false;
+      notifyListeners();
+    }
+  }
+
   /// Runs [action], then notifies every listener that state changed.
+  ///
+  /// Supports both synchronous actions and asynchronous actions (returning a [Future]).
+  /// For asynchronous actions, listeners are notified once the returned [Future] completes.
   ///
   /// Returns the result of [action].
   /// Optionally pass [label] to override the action name for [Orbit.observe] middleware
   /// and debug logging — e.g. `mutate(() => count++)` (automatically uses `'increment'`).
   /// If omitted, [label] is automatically inferred from the calling method name.
-  /// If you also override [debugSnapshot], Orbit logs exactly which
+  /// If you also override [snapshot], Orbit logs exactly which
   /// fields changed.
   @protected
   R mutate<R>(R Function() action, {String? label}) {
@@ -194,11 +280,49 @@ abstract class OrbitStore extends ChangeNotifier {
     // and the VS Code / DevTools extension receives live state updates —
     // even when debugLogging is off and no observers are registered.
     final notify = tracking || !kReleaseMode;
-    final inferredLabel = tracking ? _inferLabel(label) : label;
-    final before = tracking ? _safeSnapshot() : null;
+    // Snapshots/label inference are gated on `notify`, not the narrower
+    // `tracking`: postEvent (which powers the VS Code/DevTools extension)
+    // fires whenever `notify` is true and reads `mutation.after` directly,
+    // so it must always have a real snapshot to read — gating on `tracking`
+    // alone left it silently empty whenever debugLogging was off and no
+    // observers were registered, even with the extension attached.
+    final inferredLabel = notify ? _inferLabel(label) : label;
+    final before = notify ? _safeSnapshot() : null;
+
     try {
       final result = action();
-      if (!_disposed) notifyListeners();
+      if (result is Future) {
+        var hasError = false;
+        Object? asyncError;
+        StackTrace? asyncStack;
+
+        return (result as Future)
+            .catchError((Object error, StackTrace stackTrace) {
+          hasError = true;
+          asyncError = error;
+          asyncStack = stackTrace;
+          throw error;
+        }).whenComplete(() {
+          _dispatchNotify();
+          if (notify) {
+            Orbit._notify(
+              this,
+              OrbitMutation(
+                store: this,
+                action: inferredLabel,
+                timestamp: DateTime.now(),
+                listenerCount: _listenerCount,
+                before: before,
+                after: _safeSnapshot(),
+                error: hasError ? asyncError : null,
+                errorStackTrace: hasError ? asyncStack : null,
+              ),
+            );
+          }
+        }) as R;
+      }
+
+      _dispatchNotify();
       if (notify) {
         Orbit._notify(
           this,
@@ -208,13 +332,13 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            after: tracking ? _safeSnapshot() : null,
+            after: _safeSnapshot(),
           ),
         );
       }
       return result;
     } catch (error, stackTrace) {
-      if (!_disposed) notifyListeners();
+      _dispatchNotify();
       if (notify) {
         Orbit._notify(
           this,
@@ -224,7 +348,7 @@ abstract class OrbitStore extends ChangeNotifier {
             timestamp: DateTime.now(),
             listenerCount: _listenerCount,
             before: before,
-            after: tracking ? _safeSnapshot() : null,
+            after: _safeSnapshot(),
             error: error,
             errorStackTrace: stackTrace,
           ),
@@ -234,69 +358,71 @@ abstract class OrbitStore extends ChangeNotifier {
     }
   }
 
-  /// Awaits [action], then notifies listeners once it settles.
+  /// Asynchronously executes [action], then passes the result to [apply] inside [mutate] if successful.
   ///
-  /// Returns the result of [action].
-  /// Pass [label] to name the action for [Orbit.observe] middleware and
-  /// debug logging. If omitted, [label] is automatically inferred from the calling method name.
-  /// If you want the UI to update *during* the async work too (e.g. to
-  /// flip a `loading` flag before the await), call [mutate] yourself
-  /// before and after instead of using this helper.
+  /// If an error occurs during [action], calls [onError] if provided; otherwise
+  /// records the error and rethrows.
   @protected
-  Future<R> mutateAsync<R>(
-    Future<R> Function() action, {
+  Future<void> mutateAsync<T>({
+    required Future<T> Function() action,
+    required void Function(T result) apply,
+    void Function(Object error, StackTrace stack)? onError,
     String? label,
   }) async {
-    final tracking = Orbit.debugLogging || Orbit._hasObservers;
-    // Same as mutate: always notify in non-release mode for postEvent.
-    final notify = tracking || !kReleaseMode;
-    final inferredLabel = tracking ? _inferLabel(label) : label;
-    final before = tracking ? _safeSnapshot() : null;
+    if (_disposed) return;
+    T result;
     try {
-      final result = await action();
-      if (!_disposed) notifyListeners();
-      if (notify) {
-        Orbit._notify(
-          this,
-          OrbitMutation(
-            store: this,
-            action: inferredLabel,
-            timestamp: DateTime.now(),
-            listenerCount: _listenerCount,
-            before: before,
-            after: tracking ? _safeSnapshot() : null,
-          ),
-        );
+      result = await action();
+    } catch (e, st) {
+      if (onError != null) {
+        onError(e, st);
+      } else {
+        _onMutationError(e, st, label);
+        rethrow;
       }
-      return result;
-    } catch (error, stackTrace) {
-      if (!_disposed) notifyListeners();
-      if (notify) {
-        Orbit._notify(
-          this,
-          OrbitMutation(
-            store: this,
-            action: inferredLabel,
-            timestamp: DateTime.now(),
-            listenerCount: _listenerCount,
-            before: before,
-            after: tracking ? _safeSnapshot() : null,
-            error: error,
-            errorStackTrace: stackTrace,
-          ),
-        );
+      return;
+    }
+
+    if (_disposed) return;
+    try {
+      mutate(() => apply(result), label: label);
+    } catch (e, st) {
+      if (onError != null) {
+        onError(e, st);
+      } else {
+        rethrow;
       }
-      rethrow;
     }
   }
 
-  /// Override to return a snapshot of your state's fields, used by
-  /// [Orbit.observe]/[Orbit.changeLog] to report exactly what changed
-  /// on each mutation. Only computed when something's actually
-  /// listening ([Orbit.debugLogging] is on, or at least one observer is
-  /// registered) — never in a plain release build — so it's fine for
-  /// this to be a little more expensive than your hot-path code.
-  Map<String, Object?>? debugSnapshot() => null;
+  void _onMutationError(Object error, StackTrace stackTrace, String? label) {
+    final tracking = Orbit.debugLogging || Orbit._hasObservers;
+    final notify = tracking || !kReleaseMode;
+    final inferredLabel = notify ? _inferLabel(label) : label;
+    final before = notify ? _safeSnapshot() : null;
+    if (notify) {
+      Orbit._notify(
+        this,
+        OrbitMutation(
+          store: this,
+          action: inferredLabel,
+          timestamp: DateTime.now(),
+          listenerCount: _listenerCount,
+          before: before,
+          after: _safeSnapshot(),
+          error: error,
+          errorStackTrace: stackTrace,
+        ),
+      );
+    }
+  }
+
+  /// Override to return a snapshot of your state's fields.
+  ///
+  /// Used by:
+  /// 1. [Orbit.observe]/[Orbit.changeLog] to report exactly what changed on each mutation.
+  /// 2. Stores mixing in [Undoable] to record state history for [Orbit.undo] / [Orbit.redo].
+  Map<String, Object?>? snapshot() => null;
 
   /// Called exactly once, immediately after the store is first created
   /// by `Orbit.use` (or `OrbitScope`). Override to run setup logic —
@@ -490,6 +616,10 @@ abstract class OrbitStore extends ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _scopedWatchdogTimer?.cancel();
+    _scopedWatchdogTimer = null;
+    _scopedBatchDepth = 0;
+    _scopedPendingNotify = false;
     // One last notification, before teardown, so anything tracking this
     // store as a dependency (e.g. ComputedStore) finds out about the
     // disposal right away instead of only on its next unrelated read.

@@ -25,7 +25,7 @@ Type any of the following prefixes in `.dart` files:
 | Prefix | Inserted Template |
 | :--- | :--- |
 | `os-store` | Complete `OrbitStore` class declaration with state getters, `mutate()`, and `defineStore()` reference. |
-| `os-store-full` | `OrbitStore` declaration with `init()`, `onResume()`, `onDispose()`, `mutate()`, and `debugSnapshot()`. |
+| `os-store-full` | `OrbitStore` declaration with `init()`, `onResume()`, `onDispose()`, `mutate()`, and `snapshot()`. |
 | `os-builder` | `OrbitBuilder<MyStore>(store: ..., builder: ...)` widget tree listener. |
 | `os-builder-child` | `OrbitBuilder` with static `child` subtree re-use optimization. |
 | `os-ref-builder` | `myStore.builder(builder: ...)` direct helper call on `OrbitStoreRef`. |
@@ -34,8 +34,8 @@ Type any of the following prefixes in `.dart` files:
 | `os-scope` | `OrbitScope<MyStore>(create: () => ..., child: ...)` subtree scope widget. |
 | `os-context` | `final store = context.orbit<MyStore>();` scoped store context lookup and listener subscription. |
 | `os-context-read` | `final store = context.orbitRead<MyStore>();` store context lookup without rebuilding. |
-| `os-mutate` | `mutate(() => ...);` synchronous mutation state change. |
-| `os-mutate-async` | `await mutateAsync(() async { ... });` asynchronous mutation wrapper. |
+| `os-mutate` | `mutate(() => ...);` mutation state change. |
+| `os-mutate-async` | `await mutate(() async { ... });` asynchronous mutation wrapper. |
 | `os-observe` | `Orbit.observe((store, mutation) { ... })` global mutation middleware listener. |
 | `os-computed` | `final computed = defineStore(() => ComputedStore<T>(...))` derived store setup. |
 | `os-future-provider` | `final futureProvider = defineStore(() => FutureProvider<T>(...))` async Future store setup. |
