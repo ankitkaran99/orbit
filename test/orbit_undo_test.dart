@@ -223,11 +223,10 @@ void main() {
     });
 
     test('Orbit.undo() / redo() on disposed store is safe no-op', () {
-      final store =
-          Orbit.use<_UndoableCounterStore>(() => _UndoableCounterStore());
+      final store = _UndoableCounterStore();
       store.increment(); // count: 1
 
-      Orbit.reset<_UndoableCounterStore>(); // disposes store
+      store.dispose(); // disposes store directly without purging undo stack
 
       expect(Orbit.canUndo, isTrue);
 

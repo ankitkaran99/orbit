@@ -1,3 +1,7 @@
+## 0.6.2
+
+- **Fix (`test/orbit_undo_test.dart`)**: Updated test for disposed store undo to dispose store directly without triggering `Orbit.reset()` stack purging.
+
 ## 0.6.1
 
 - **Fix (`lib/src/orbit_undo.dart`)**: Updated `part of` directive to use URI reference (`part of '../orbit.dart';`) to resolve pub.dev static analysis lint.
