@@ -1,3 +1,7 @@
+## 0.6.3
+
+- **Feature (Atomic Batch Undo/Redo)**: Mutations executed inside `Orbit.batch()` or `store.batch()` are now automatically grouped into a single atomic undo/redo step (`OrbitUndoGroup`). Calling `Orbit.undo()` or `Orbit.redo()` reverts or re-applies all mutations from that batch at once.
+
 ## 0.6.2
 
 - **Fix (`test/orbit_undo_test.dart`)**: Updated test for disposed store undo to dispose store directly without triggering `Orbit.reset()` stack purging.

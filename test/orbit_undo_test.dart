@@ -50,6 +50,26 @@ class _UndoableCounterStore extends OrbitStore with Undoable {
   }
 }
 
+class _UndoableTwoFieldStore extends OrbitStore with Undoable {
+  String _a = 'initial';
+  int _b = 0;
+
+  String get a => _a;
+  int get b => _b;
+
+  void updateA(String val) => mutate(() => _a = val);
+  void updateB(int val) => mutate(() => _b = val);
+
+  @override
+  Map<String, Object?> snapshot() => {'a': _a, 'b': _b};
+
+  @override
+  void restore(Map<String, Object?> state) {
+    _a = state['a'] as String;
+    _b = state['b'] as int;
+  }
+}
+
 void main() {
   tearDown(() {
     Orbit.resetAll();
@@ -258,6 +278,87 @@ void main() {
       expect(plain.count, 1);
       expect(Orbit.canUndo, isFalse,
           reason: 'non-Undoable store does not push undo entries');
+    });
+
+    test(
+        'Orbit.batch() groups all mutations inside into a single atomic undo step',
+        () {
+      final store =
+          Orbit.use<_UndoableCounterStore>(() => _UndoableCounterStore());
+
+      Orbit.batch(() {
+        store.increment(); // count: 1
+        store.increment(); // count: 2
+        store.increment(); // count: 3
+      });
+
+      expect(store.count, 3);
+
+      // A single Orbit.undo() call should revert the entire batch back to 0!
+      Orbit.undo();
+
+      expect(store.count, 0);
+
+      // A single Orbit.redo() call should re-apply the entire batch back to 3!
+      Orbit.redo();
+
+      expect(store.count, 3);
+    });
+
+    test(
+        'Orbit.batch() across multiple stores groups into a single atomic undo step',
+        () {
+      final storeA =
+          Orbit.use<_UndoableCounterStore>(() => _UndoableCounterStore());
+      final storeB =
+          Orbit.use<_UndoableTwoFieldStore>(() => _UndoableTwoFieldStore());
+
+      Orbit.batch(() {
+        storeA.increment(); // A: 1
+        storeB.updateA('hello');
+        storeB.updateB(42);
+      });
+
+      expect(storeA.count, 1);
+      expect(storeB.a, 'hello');
+      expect(storeB.b, 42);
+
+      Orbit.undo();
+
+      expect(storeA.count, 0);
+      expect(storeB.a, 'initial');
+      expect(storeB.b, 0);
+
+      Orbit.redo();
+
+      expect(storeA.count, 1);
+      expect(storeB.a, 'hello');
+      expect(storeB.b, 42);
+    });
+
+    test(
+        'store.batch() groups mutations on that store into a single atomic undo step',
+        () {
+      final store =
+          Orbit.use<_UndoableTwoFieldStore>(() => _UndoableTwoFieldStore());
+
+      store.batch(() {
+        store.updateA('first');
+        store.updateB(100);
+      });
+
+      expect(store.a, 'first');
+      expect(store.b, 100);
+
+      Orbit.undo();
+
+      expect(store.a, 'initial');
+      expect(store.b, 0);
+
+      Orbit.redo();
+
+      expect(store.a, 'first');
+      expect(store.b, 100);
     });
   });
 }

@@ -134,17 +134,21 @@ class Orbit {
   }) {
     final effectiveLabel = label ?? 'Orbit.batch';
     _openGlobalBatch(effectiveLabel);
+    _openUndoBatch(effectiveLabel);
 
     try {
       final result = fn();
       if (result is Future) {
         return (result as Future).whenComplete(() {
+          _closeUndoBatch();
           _closeGlobalBatch();
         }) as FutureOr<T>;
       }
+      _closeUndoBatch();
       _closeGlobalBatch();
       return result;
     } catch (error) {
+      _closeUndoBatch();
       _closeGlobalBatch();
       rethrow;
     }
@@ -194,8 +198,10 @@ class Orbit {
   static int undoStackLimit = 50;
 
   static bool _isRestoring = false;
-  static final List<OrbitUndoEntry> _undoStack = [];
-  static final List<OrbitUndoEntry> _redoStack = [];
+  static int _undoBatchDepth = 0;
+  static OrbitUndoGroup? _currentUndoGroup;
+  static final List<OrbitUndoItem> _undoStack = [];
+  static final List<OrbitUndoItem> _redoStack = [];
 
   /// Whether there is at least one mutation that can be undone.
   static bool get canUndo => _undoStack.isNotEmpty;
@@ -203,10 +209,43 @@ class Orbit {
   /// Whether there is at least one undone mutation that can be redone.
   static bool get canRedo => _redoStack.isNotEmpty;
 
+  static void _openUndoBatch(String label) {
+    if (_isRestoring) return;
+    _undoBatchDepth++;
+    if (_undoBatchDepth == 1) {
+      _currentUndoGroup = OrbitUndoGroup(label: label);
+    }
+  }
+
+  static void _closeUndoBatch() {
+    if (_isRestoring) return;
+    if (_undoBatchDepth <= 0) return;
+    _undoBatchDepth--;
+    if (_undoBatchDepth == 0) {
+      final group = _currentUndoGroup;
+      _currentUndoGroup = null;
+      if (group != null && group.entries.isNotEmpty) {
+        if (group.entries.length == 1) {
+          _pushUndoItem(group.entries.first);
+        } else {
+          _pushUndoItem(group);
+        }
+      }
+    }
+  }
+
   /// Internal — called only from Undoable.mutate().
   static void _pushUndo(OrbitUndoEntry entry) {
     if (_isRestoring) return;
-    _undoStack.add(entry);
+    if (_undoBatchDepth > 0 && _currentUndoGroup != null) {
+      _currentUndoGroup!.entries.add(entry);
+    } else {
+      _pushUndoItem(entry);
+    }
+  }
+
+  static void _pushUndoItem(OrbitUndoItem item) {
+    _undoStack.add(item);
     if (_undoStack.length > undoStackLimit) {
       _undoStack.removeAt(0);
     }
@@ -221,59 +260,99 @@ class Orbit {
   /// then when we already know at dispose time.
   static void _purgeUndoEntriesFor(OrbitStore store) {
     if (_undoStack.isEmpty && _redoStack.isEmpty) return;
-    _undoStack.removeWhere((entry) => identical(entry.store, store));
-    _redoStack.removeWhere((entry) => identical(entry.store, store));
+
+    void purgeFrom(List<OrbitUndoItem> stack) {
+      stack.removeWhere((item) {
+        if (item is OrbitUndoEntry) {
+          return identical(item.store, store);
+        } else if (item is OrbitUndoGroup) {
+          item.entries.removeWhere((e) => identical(e.store, store));
+          return item.entries.isEmpty;
+        }
+        return false;
+      });
+    }
+
+    purgeFrom(_undoStack);
+    purgeFrom(_redoStack);
   }
 
-  /// Reverts the most recent mutation across all [Undoable] stores.
+  /// Reverts the most recent mutation (or batch of mutations) across all [Undoable] stores.
   ///
-  /// If the store's [Undoable.restore] override throws, that's surfaced as
+  /// If a store's [Undoable.restore] override throws, that's surfaced as
   /// a normal failed mutation (recorded in [Orbit.changeLog] /
   /// [Orbit.observe] with label `'undo'`, same as any other throwing
-  /// `mutate()` call) and rethrown to the caller. The entry is popped
-  /// before [Undoable.restore] runs and is deliberately NOT restored to
-  /// either stack on failure — [restore] bugs are deterministic, so
-  /// retrying the same entry would just fail the same way again, and
-  /// keeping a known-broken entry on top of the stack would permanently
-  /// block undoing anything older underneath it. Dropping it lets the
-  /// next `undo()` call reach the next, presumably-good entry instead.
+  /// `mutate()` call) and rethrown to the caller.
   static void undo() {
     if (_undoStack.isEmpty) return;
-    final entry = _undoStack.removeLast();
-    if (entry.store._disposed) return;
+    final item = _undoStack.removeLast();
+
+    final isDisposed = item is OrbitUndoEntry
+        ? item.store._disposed
+        : (item as OrbitUndoGroup).entries.every((e) => e.store._disposed);
+    if (isDisposed) return;
 
     _isRestoring = true;
     try {
-      entry.store.mutate(
-        () => (entry.store as Undoable).restore(entry.before),
-        label: 'undo',
-      );
-      _redoStack.add(entry);
+      Orbit.batch(() {
+        if (item is OrbitUndoEntry) {
+          if (!item.store._disposed) {
+            item.store.mutate(
+              () => (item.store as Undoable).restore(item.before),
+              label: 'undo',
+            );
+          }
+        } else if (item is OrbitUndoGroup) {
+          for (final entry in item.entries.reversed) {
+            if (!entry.store._disposed) {
+              entry.store.mutate(
+                () => (entry.store as Undoable).restore(entry.before),
+                label: 'undo',
+              );
+            }
+          }
+        }
+      }, label: item is OrbitUndoGroup ? (item.label ?? 'undo') : 'undo');
+
+      _redoStack.add(item);
     } finally {
       _isRestoring = false;
     }
   }
 
-  /// Re-applies the most recently undone mutation.
-  ///
-  /// Same failure handling as [undo]: a throwing [Undoable.restore]
-  /// surfaces as a normal failed, logged mutation and the entry is
-  /// dropped rather than retried, for the same reason.
+  /// Re-applies the most recently undone mutation (or batch of mutations).
   static void redo() {
     if (_redoStack.isEmpty) return;
-    final entry = _redoStack.removeLast();
-    if (entry.store._disposed) return;
+    final item = _redoStack.removeLast();
+
+    final isDisposed = item is OrbitUndoEntry
+        ? item.store._disposed
+        : (item as OrbitUndoGroup).entries.every((e) => e.store._disposed);
+    if (isDisposed) return;
 
     _isRestoring = true;
     try {
-      entry.store.mutate(
-        () => (entry.store as Undoable).restore(entry.after),
-        label: 'redo',
-      );
-      _undoStack.add(entry);
-      if (_undoStack.length > undoStackLimit) {
-        _undoStack.removeAt(0);
-      }
+      Orbit.batch(() {
+        if (item is OrbitUndoEntry) {
+          if (!item.store._disposed) {
+            item.store.mutate(
+              () => (item.store as Undoable).restore(item.after),
+              label: 'redo',
+            );
+          }
+        } else if (item is OrbitUndoGroup) {
+          for (final entry in item.entries) {
+            if (!entry.store._disposed) {
+              entry.store.mutate(
+                () => (entry.store as Undoable).restore(entry.after),
+                label: 'redo',
+              );
+            }
+          }
+        }
+      }, label: item is OrbitUndoGroup ? (item.label ?? 'redo') : 'redo');
+
+      _undoStack.add(item);
     } finally {
       _isRestoring = false;
     }

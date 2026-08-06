@@ -198,17 +198,21 @@ abstract class OrbitStore extends ChangeNotifier {
   }) {
     final effectiveLabel = label ?? '${runtimeType}.batch';
     _openScopedBatch(effectiveLabel);
+    Orbit._openUndoBatch(effectiveLabel);
 
     try {
       final result = fn();
       if (result is Future) {
         return (result as Future).whenComplete(() {
+          Orbit._closeUndoBatch();
           _closeScopedBatch();
         }) as FutureOr<T>;
       }
+      Orbit._closeUndoBatch();
       _closeScopedBatch();
       return result;
     } catch (error) {
+      Orbit._closeUndoBatch();
       _closeScopedBatch();
       rethrow;
     }

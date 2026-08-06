@@ -1,7 +1,10 @@
 part of '../orbit.dart';
 
-/// Represents a single record in Orbit's global undo/redo history.
-class OrbitUndoEntry {
+/// Base class for items stored in Orbit's undo/redo stacks.
+abstract class OrbitUndoItem {}
+
+/// Represents a single store state change record in Orbit's undo/redo history.
+class OrbitUndoEntry extends OrbitUndoItem {
   OrbitUndoEntry({
     required this.store,
     required this.before,
@@ -20,6 +23,20 @@ class OrbitUndoEntry {
 
   /// Optional action label of the mutation that produced this record.
   final String? label;
+}
+
+/// Represents a group of state mutations captured during a single batch execution.
+class OrbitUndoGroup extends OrbitUndoItem {
+  OrbitUndoGroup({
+    this.label,
+    List<OrbitUndoEntry>? entries,
+  }) : entries = entries ?? [];
+
+  /// Optional action label of the batch that produced this group.
+  final String? label;
+
+  /// All individual store mutations performed within the batch.
+  final List<OrbitUndoEntry> entries;
 }
 
 /// A mixin on [OrbitStore] that opts the store into global undo/redo support.

@@ -535,6 +535,7 @@ Row(
 ```
 
 - **Stack Capacity**: Defaults to 50 steps. Bounded via `Orbit.undoStackLimit = 100;`.
+- **Atomic Batch Undo**: All mutations performed inside an `Orbit.batch()` or `store.batch()` block are automatically grouped into a single atomic undo/redo step (`OrbitUndoGroup`). Calling `Orbit.undo()` or `Orbit.redo()` reverts or re-applies the entire batch at once.
 - **Reentrancy Safe**: `Orbit.undo()` and `Orbit.redo()` execute through `mutate()` so widgets re-render reactively, but do not push extra entries onto the history stack.
 - **Fresh Mutations**: Any fresh mutation after an undo automatically invalidates the redo history stack.
 
