@@ -153,11 +153,49 @@
   "Orbit Mutate Async": {
     "prefix": "os-mutate-async",
     "body": [
-      "await mutate(() async {",
-      "  ${1:// async work}",
+      "await mutateAsync<${1:T}>(",
+      "  action: () async {",
+      "    ${2:// long-running sequential calls}",
+      "    return ${3:result};",
+      "  },",
+      "  apply: (${4:result}) => _${5:state} = ${4:result},",
+      "  onError: (e, st) => ${6:/* handle error */},",
+      ");"
+    ],
+    "description": "Inserts a mutateAsync call inside OrbitStore decoupling async operations from safe state commits"
+  },
+  "Orbit Batch": {
+    "prefix": "os-batch",
+    "body": [
+      "batch(() {",
+      "  ${1:// mutations to commit in a single notification & undo step}",
       "});"
     ],
-    "description": "Inserts an asynchronous mutate call inside OrbitStore"
+    "description": "Defers notifyListeners() across all mutations inside the batch and groups them into a single atomic undo step"
+  },
+  "Orbit Undoable Store": {
+    "prefix": "os-undoable",
+    "body": [
+      "class ${1:Counter}Store extends OrbitStore with Undoable {",
+      "  ${2:int} _${3:value} = ${4:0};",
+      "  ${2:int} get ${3:value} => _${3:value};",
+      "",
+      "  void update${3/(.*)/${1:/capitalize}/}(${2:int} newValue) {",
+      "    mutate(() => _${3:value} = newValue);",
+      "  }",
+      "",
+      "  @override",
+      "  Map<String, Object?> snapshot() => {'${3:value}': _${3:value}};",
+      "",
+      "  @override",
+      "  void restore(Map<String, Object?> state) {",
+      "    _${3:value} = state['${3:value}'] as ${2:int};",
+      "  }",
+      "}",
+      "",
+      "final ${1/(.*)/${1:/camelcase}/}Store = defineStore(() => ${1:Counter}Store());"
+    ],
+    "description": "Creates an OrbitStore with Undoable mixin for global undo/redo history"
   },
   "Orbit Observer Middleware": {
     "prefix": "os-observe",
