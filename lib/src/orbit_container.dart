@@ -418,13 +418,15 @@ class Orbit {
             ? '$typeName (#$idHex)'
             : typeName;
 
+        // developer.postEvent only reliably serializes flat Map<String, String>
+        // values across all Dart/Flutter SDK versions. Nested maps (like the
+        // snapshot result) can be silently dropped or toString()'d, so we
+        // JSON-encode the state ourselves and decode it on the JS side.
         developer.postEvent('orbit:state-changed', {
           'store': typeName,
           'storeKey': storeKey,
           'action': mutation.action,
-          // Reuse the snapshot mutate() already took instead of
-          // calling the (potentially expensive) snapshot() a 3rd time.
-          'state': mutation.after ?? {},
+          'state': jsonEncode(mutation.after ?? {}),
         });
       } catch (_) {}
     }

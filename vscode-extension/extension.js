@@ -659,17 +659,25 @@ class OrbitStateWebviewProvider {
         if (extKind === 'orbit:state-changed' || eventData.kind === 'orbit:state-changed') {
           const payload = eventData.extensionData || (eventData.eventData && eventData.eventData.extensionData);
           if (payload && payload.storeKey) {
+            const rawState = payload.state;
+            // state is JSON-encoded string on Dart side (to survive postEvent's
+            // flat-map serialisation). Fall back to object in case it already
+            // arrived parsed (e.g. older Orbit versions or DevTools protocol).
+            let parsedState = {};
+            try {
+              parsedState = typeof rawState === 'string' ? JSON.parse(rawState) : (rawState || {});
+            } catch (_) {}
             // Optimistically update local store cache for zero-latency realtime UI update
             if (!this._currentStores[payload.storeKey]) {
               this._currentStores[payload.storeKey] = {
                 name: payload.store || payload.storeKey,
                 listeners: 0,
-                state: payload.state || {},
+                state: parsedState,
                 isScoped: payload.storeKey.includes('(#'),
                 isReady: true
               };
             } else {
-              this._currentStores[payload.storeKey].state = payload.state || {};
+              this._currentStores[payload.storeKey].state = parsedState;
             }
             this._pushStores();
           }
