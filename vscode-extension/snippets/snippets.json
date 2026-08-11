@@ -5,25 +5,24 @@
       "import 'package:orbit_state/orbit.dart';",
       "",
       "class ${1:Counter}Store extends OrbitStore {",
-      "  ${2:int} _${3:value} = ${4:0};",
-      "  ${2:int} get ${3:value} => _${3:value};",
+      "  ${2:int} _${3:count} = ${4:0};",
+      "  ${2:int} get ${3:count} => _${3:count};",
       "",
-      "  void update${3/(.*)/${1:/capitalize}/}(${2:int} newValue) {",
-      "    mutate(() => _${3:value} = newValue);",
+      "  void increment() {",
+      "    mutate(() => _${3:count}++);",
       "  }",
       "",
       "  @override",
-      "  Map<String, Object?> snapshot() => {'${3:value}': _${3:value}};",
+      "  Map<String, Object?> snapshot() => {'${3:count}': _${3:count}};",
       "}",
       "",
       "final ${1/(.*)/${1:/camelcase}/}Store = defineStore(() => ${1:Counter}Store());"
     ],
-    "description": "Creates an OrbitStore class with private state, getter, mutate method, and defineStore singleton"
+    "description": "Creates an OrbitStore class with private state, getter, mutate method, snapshot and defineStore singleton"
   },
   "Orbit Store Full": {
     "prefix": "os-store-full",
     "body": [
-      "import 'dart:async';",
       "import 'package:orbit_state/orbit.dart';",
       "",
       "class ${1:User}Store extends OrbitStore {",
@@ -32,7 +31,7 @@
       "",
       "  @override",
       "  Future<void> init() async {",
-      "    // Initial async setup",
+      "    // One-time async setup (e.g. load from storage)",
       "  }",
       "",
       "  @override",
@@ -42,7 +41,7 @@
       "",
       "  @override",
       "  void onDispose() {",
-      "    // Cleanup timers/subscriptions",
+      "    // Cancel timers/subscriptions",
       "  }",
       "",
       "  @override",
@@ -155,11 +154,11 @@
     "body": [
       "await mutateAsync<${1:T}>(",
       "  action: () async {",
-      "    ${2:// long-running sequential calls}",
+      "    ${2:// long-running async work}",
       "    return ${3:result};",
       "  },",
-      "  apply: (${4:result}) => _${5:state} = ${4:result},",
-      "  onError: (e, st) => ${6:/* handle error */},",
+      "  apply: (result) => _${4:state} = result,",
+      "  onError: (e, st) => ${5:/* handle error */},",
       ");"
     ],
     "description": "Inserts a mutateAsync call inside OrbitStore decoupling async operations from safe state commits"
@@ -201,7 +200,7 @@
     "prefix": "os-observe",
     "body": [
       "final ${1:unsubscribe} = Orbit.observe((store, mutation) {",
-      "  ${2:print('[Mutation] \\${mutation.action} — \\${mutation.diff}');}",
+      "  ${2:print('[\\${store.runtimeType}] \\${mutation.action} — \\${mutation.after}');}",
       "});"
     ],
     "description": "Inserts an Orbit.observe mutation listener middleware"
@@ -209,12 +208,12 @@
   "Orbit Computed Store": {
     "prefix": "os-computed",
     "body": [
-      "final ${1:computedStore} = defineStore(() => ComputedStore<${2:int}>((watch) {",
-      "  final ${3:dependency} = watch(${4:dependencyStore});",
-      "  return ${5:dependency.value * 2};",
+      "final ${1:derivedStore} = defineStore(() => ComputedStore<${2:int}>((watch) {",
+      "  final ${3:dep} = watch(${4:sourceStore});",
+      "  return ${5:dep.count * 2};",
       "}));"
     ],
-    "description": "Creates a ComputedStore that derives state from other stores using watch()"
+    "description": "Creates a ComputedStore that derives state from other stores using watch(). watch() returns the store instance — access its getters directly."
   },
   "Orbit Future Provider": {
     "prefix": "os-future-provider",

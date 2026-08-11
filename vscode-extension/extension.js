@@ -253,18 +253,19 @@ function activate(context) {
       vscode.window.showErrorMessage(`File ${fileName} already exists at destination.`);
       return;
     }
+    const storeFieldName = camelRef.replace('Store', '').replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '') || 'count';
     const storeTemplate = `import 'package:orbit_state/orbit.dart';
 
 class ${pascalName} extends OrbitStore {
-  int _counter = 0;
-  int get counter => _counter;
+  int _${storeFieldName} = 0;
+  int get ${storeFieldName} => _${storeFieldName};
 
   void increment() {
-    mutate(() => _counter++);
+    mutate(() => _${storeFieldName}++);
   }
 
   @override
-  Map<String, Object?> snapshot() => {'counter': _counter};
+  Map<String, Object?> snapshot() => {'${storeFieldName}': _${storeFieldName}};
 }
 
 final ${camelRef} = defineStore(() => ${pascalName}());
