@@ -1,3 +1,7 @@
+## 0.6.4
+
+- **Fix (VS Code Inspector)**: `developer.postEvent` only reliably serializes flat `Map<String, String>` values across Dart/Flutter SDK versions. Nested snapshot maps (e.g. a `Map<String, Object?>` returned by `snapshot()`) were being silently dropped or converted via `.toString()`, causing the inspector to always show "No snapshot fields" even when `snapshot()` was properly overridden. The fix JSON-encodes the state string on the Dart side and decodes it in the extension, making real-time state display work correctly for all snapshot shapes.
+
 ## 0.6.3
 
 - **Feature (Atomic Batch Undo/Redo)**: Mutations executed inside `Orbit.batch()` or `store.batch()` are now automatically grouped into a single atomic undo/redo step (`OrbitUndoGroup`). Calling `Orbit.undo()` or `Orbit.redo()` reverts or re-applies all mutations from that batch at once.
