@@ -297,6 +297,8 @@ final ${camelRef} = defineStore(() => ${pascalName}());
 
   const checkActiveSessionUri = async (session) => {
     if (!session) return;
+    // Don't try to reconnect if we're already connected to a live session.
+    if (provider._connected) return;
     try {
       const customResponse = await session.customRequest('vmServiceUri').catch(() => null);
       if (customResponse && (customResponse.vmServiceUri || customResponse.uri)) {
@@ -465,6 +467,9 @@ class OrbitStateWebviewProvider {
   // ---- WebSocket management ----
 
   _connectWs(rawUri) {
+    const targetUri = normalizeWsUri(rawUri);
+    // Guard: don't tear down and restart if we're already live on the same URI.
+    if (this._connected && this._connectedUri === targetUri) return;
     // Tear down the old socket and reset session state.
     if (this._ws) { this._ws.destroy(); this._ws = null; }
     this._connected = false;
@@ -558,11 +563,18 @@ class OrbitStateWebviewProvider {
     let response;
     try { response = JSON.parse(raw); } catch (_) { return; }
 
-    // getVM response → grab first isolate ID → fetch stores
+    // Log raw messages to extension host console for debugging
+    if (response.id === 'getVM' || response.id === 'getStores') {
+      console.log('[Orbit Inspector] VM message id=' + response.id + ':', JSON.stringify(response).slice(0, 800));
+    }
+
+    // getVM response → grab first live/runnable isolate ID → fetch stores
     if (response.id === 'getVM' && response.result) {
       const isolates = response.result.isolates || [];
-      if (isolates.length > 0) {
-        this._isolateId = isolates[0].id;
+      // Find first runnable isolate; fall back to any isolate if none marked runnable
+      const runnable = isolates.find(i => i.runnable !== false) || isolates[0];
+      if (runnable) {
+        this._isolateId = runnable.id;
         this._fetchStores();
       } else {
         // Isolate not ready yet — retry, but only if still connected.
@@ -581,12 +593,26 @@ class OrbitStateWebviewProvider {
     if (response.id === 'getStores') {
       if (response.result) {
         try {
-          // Use `vmResult` (not `raw`) to avoid shadowing the outer `raw` parameter.
           const vmResult = response.result;
-          let storeData = vmResult;
-          if (typeof vmResult.json === 'string') storeData = JSON.parse(vmResult.json);
-          else if (vmResult.json && typeof vmResult.json === 'object') storeData = vmResult.json;
-          this._currentStores = storeData.stores || {};
+          let storeData = null;
+          // The VM service embeds the ServiceExtensionResponse payload in
+          // different ways across Dart/Flutter versions:
+          //   1. result.result  — raw JSON string (common in newer SDKs)
+          //   2. result.stores  — parsed JSON merged at top level
+          //   3. result.json    — string or object (legacy field name)
+          if (typeof vmResult.result === 'string') {
+            storeData = JSON.parse(vmResult.result);
+          } else if (vmResult.result && typeof vmResult.result === 'object') {
+            storeData = vmResult.result;
+          } else if (typeof vmResult.json === 'string') {
+            storeData = JSON.parse(vmResult.json);
+          } else if (vmResult.json && typeof vmResult.json === 'object') {
+            storeData = vmResult.json;
+          } else if (vmResult.stores) {
+            // Already parsed and merged at top level
+            storeData = vmResult;
+          }
+          this._currentStores = (storeData && storeData.stores) || {};
         } catch (_) {
           this._currentStores = {};
         }
