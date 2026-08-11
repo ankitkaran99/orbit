@@ -667,19 +667,14 @@ class OrbitStateWebviewProvider {
             try {
               parsedState = typeof rawState === 'string' ? JSON.parse(rawState) : (rawState || {});
             } catch (_) {}
-            // Optimistically update local store cache for zero-latency realtime UI update
-            if (!this._currentStores[payload.storeKey]) {
-              this._currentStores[payload.storeKey] = {
-                name: payload.store || payload.storeKey,
-                listeners: 0,
-                state: parsedState,
-                isScoped: payload.storeKey.includes('(#'),
-                isReady: true
-              };
-            } else {
+            // Optimistically update local store cache for zero-latency realtime UI update.
+            // Only update if the store already exists — if it's new, we don't know its
+            // listener count or ready state, so we wait for the _scheduleFetch() below
+            // to populate it accurately rather than flashing 0 listeners on screen.
+            if (this._currentStores[payload.storeKey]) {
               this._currentStores[payload.storeKey].state = parsedState;
+              this._pushStores();
             }
-            this._pushStores();
           }
           this._fetchRetries = 0;
           this._scheduleFetch();
@@ -690,11 +685,18 @@ class OrbitStateWebviewProvider {
       if (streamId === 'Isolate' && eventData) {
         const kind = eventData.kind;
         if (kind === 'IsolateReload' || kind === 'IsolateStart' || kind === 'IsolateRunnable') {
-          // Hot-reload/start drops all Extension stream subscriptions on the Dart side;
-          // resubscribe immediately so we don't miss any post-reload events.
+          // Resubscribe to Extension stream immediately — hot-reload drops it on the Dart
+          // side and we must re-listen before any post-reload postEvent fires.
           this._wsSend({ jsonrpc: '2.0', method: 'streamListen', params: { streamId: 'Extension' }, id: 'subExt' });
           this._fetchRetries = 0;
-          this._scheduleFetch();
+          // Delay the store fetch so Flutter's widget tree has time to rebuild and
+          // re-subscribe before we snapshot listener counts. Fetching immediately
+          // captures 0 listeners for every store because widgets are mid-rebuild.
+          if (this._fetchTimer) clearTimeout(this._fetchTimer);
+          this._fetchTimer = setTimeout(() => {
+            this._fetchTimer = null;
+            if (this._connected && this._isolateId) this._fetchStores();
+          }, 800);
         }
         if (kind === 'IsolateExit') {
           this._isolateId = null;
@@ -707,7 +709,11 @@ class OrbitStateWebviewProvider {
         if (kind === 'ServiceExtensionAdded' &&
             eventData.extensionRPC === 'ext.orbit.getStores') {
           this._fetchRetries = 0;
-          this._scheduleFetch();
+          if (this._fetchTimer) clearTimeout(this._fetchTimer);
+          this._fetchTimer = setTimeout(() => {
+            this._fetchTimer = null;
+            if (this._connected && this._isolateId) this._fetchStores();
+          }, 800);
         }
       }
     }
