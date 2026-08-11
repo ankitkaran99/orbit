@@ -888,7 +888,7 @@ class OrbitStateWebviewProvider {
 
   <div class="refresh-container">
     <button id="refresh-btn" class="icon-btn" title="Refresh state" style="display:none;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95L1 10"/></svg>
     </button>
   </div>
 
@@ -901,9 +901,15 @@ class OrbitStateWebviewProvider {
     let connected = false;
     let currentStores = {};
 
-    window.addEventListener('DOMContentLoaded', () => {
-      vscode.postMessage({ command: 'ready' });
-    });
+    // Send 'ready' immediately — the script is inline so the DOM is already
+    // fully parsed by the time this code runs. DOMContentLoaded is unreliable
+    // in VS Code webviews because the event may have already fired before the
+    // listener is attached. Sending synchronously guarantees the extension
+    // host receives it and pushes the initial connection/store state.
+    vscode.postMessage({ command: 'ready' });
+    // Belt-and-suspenders: also listen for load in case the panel is being
+    // revealed/restored rather than freshly created.
+    window.addEventListener('load', () => vscode.postMessage({ command: 'ready' }));
 
     // All messages come from the extension host (Node.js)
     window.addEventListener('message', event => {
