@@ -397,12 +397,26 @@ class OrbitStateWebviewProvider {
     this._connectedUri = '';
     this._fetchRetries = 0;
     this._fetchTimer = null;   // debounce handle for _scheduleFetch
+    this._pollTimer = null;    // backup periodic polling handle
   }
 
   resolveWebviewView(webviewView) {
     this._view = webviewView;
     webviewView.webview.options = { enableScripts: true, localResourceRoots: [this._extensionUri] };
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+
+    if (webviewView.onDidChangeVisibility) {
+      webviewView.onDidChangeVisibility(() => {
+        if (webviewView.visible && this._connected) {
+          this._fetchRetries = 0;
+          if (this._isolateId) {
+            this._fetchStores();
+          } else {
+            this._wsSend({ jsonrpc: '2.0', method: 'getVM', params: {}, id: 'getVM' });
+          }
+        }
+      });
+    }
 
     webviewView.webview.onDidReceiveMessage(message => {
       switch (message.command) {
@@ -459,6 +473,7 @@ class OrbitStateWebviewProvider {
     // not wherever a previous connection attempt left off.
     this._fetchRetries = 0;
     if (this._fetchTimer) { clearTimeout(this._fetchTimer); this._fetchTimer = null; }
+    this._stopPolling();
     // Clear stale stores from the previous session so they don't show while
     // waiting for the fresh fetch after reconnect.
     this._currentStores = {};
@@ -480,6 +495,7 @@ class OrbitStateWebviewProvider {
       this._wsSend({ jsonrpc: '2.0', method: 'getVM', params: {}, id: 'getVM' });
       this._wsSend({ jsonrpc: '2.0', method: 'streamListen', params: { streamId: 'Extension' }, id: 'subExt' });
       this._wsSend({ jsonrpc: '2.0', method: 'streamListen', params: { streamId: 'Isolate' }, id: 'subIsolate' });
+      this._startPolling();
     });
 
     this._ws.on('message', (data) => this._handleVmMessage(data));
@@ -493,6 +509,7 @@ class OrbitStateWebviewProvider {
 
     this._ws.on('close', (code, reason) => {
       const lastError = this._ws && this._ws._lastError;
+      this._stopPolling();
       this._connected = false;
       this._isolateId = null;
       this._ws = null;  // prevent stale reference between connection attempts
@@ -507,6 +524,7 @@ class OrbitStateWebviewProvider {
   }
 
   _disconnectWs() {
+    this._stopPolling();
     if (this._ws) { this._ws.destroy(); this._ws = null; }
     this._connected = false;
     this._isolateId = null;
@@ -514,6 +532,22 @@ class OrbitStateWebviewProvider {
     if (this._fetchTimer) { clearTimeout(this._fetchTimer); this._fetchTimer = null; }
     this._postToView({ command: 'status', state: 'disconnected', code: 1000, reason: '' });
     this._pushStores();
+  }
+
+  _startPolling() {
+    this._stopPolling();
+    this._pollTimer = setInterval(() => {
+      if (this._connected && this._isolateId) {
+        this._fetchStores();
+      }
+    }, 1500);
+  }
+
+  _stopPolling() {
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
+    }
   }
 
   _wsSend(obj) {
@@ -592,23 +626,45 @@ class OrbitStateWebviewProvider {
     if (response.method === 'streamNotify' && response.params) {
       const { streamId, event: eventData } = response.params;
 
-      // Extension stream: orbit:state-changed → debounce a fetch
-      if (streamId === 'Extension' && eventData && eventData.extensionKind === 'orbit:state-changed') {
-        // Debounce fetches so rapid mutations (e.g. 60fps timers, stream
-        // providers) don't generate one VM round-trip per frame.
-        this._scheduleFetch();
+      // Extension stream: orbit:state-changed → instant patch + debounced fetch
+      if (streamId === 'Extension' && eventData) {
+        const extKind = eventData.extensionKind || (eventData.eventData && eventData.eventData.extensionKind);
+        if (extKind === 'orbit:state-changed' || eventData.kind === 'orbit:state-changed') {
+          const payload = eventData.extensionData || (eventData.eventData && eventData.eventData.extensionData);
+          if (payload && payload.storeKey) {
+            // Optimistically update local store cache for zero-latency realtime UI update
+            if (!this._currentStores[payload.storeKey]) {
+              this._currentStores[payload.storeKey] = {
+                name: payload.store || payload.storeKey,
+                listeners: 0,
+                state: payload.state || {},
+                isScoped: payload.storeKey.includes('(#'),
+                isReady: true
+              };
+            } else {
+              this._currentStores[payload.storeKey].state = payload.state || {};
+            }
+            this._pushStores();
+          }
+          this._fetchRetries = 0;
+          this._scheduleFetch();
+        }
       }
 
-      // Isolate stream: resubscribe + refetch on hot-reload or when
-      // ext.orbit.getStores is first registered (i.e. when Orbit.use() is called).
+      // Isolate stream: resubscribe + refetch on hot-reload, isolate start, or service extension registration
       if (streamId === 'Isolate' && eventData) {
         const kind = eventData.kind;
-        if (kind === 'IsolateReload') {
-          // Hot-reload drops all Extension stream subscriptions on the Dart side;
+        if (kind === 'IsolateReload' || kind === 'IsolateStart' || kind === 'IsolateRunnable') {
+          // Hot-reload/start drops all Extension stream subscriptions on the Dart side;
           // resubscribe immediately so we don't miss any post-reload events.
           this._wsSend({ jsonrpc: '2.0', method: 'streamListen', params: { streamId: 'Extension' }, id: 'subExt' });
           this._fetchRetries = 0;
           this._scheduleFetch();
+        }
+        if (kind === 'IsolateExit') {
+          this._isolateId = null;
+          this._currentStores = {};
+          this._pushStores();
         }
         // ServiceExtensionAdded fires the moment Orbit.use() registers
         // ext.orbit.getStores — crucial for the race where the extension
@@ -675,6 +731,7 @@ class OrbitStateWebviewProvider {
   dispose() {
     // Called by VSCode when the extension deactivates — tear down the
     // WebSocket and any pending timers to prevent TCP socket leaks.
+    this._stopPolling();
     this._disconnectWs();
     this._view = undefined;
   }
@@ -957,7 +1014,12 @@ class OrbitStateWebviewProvider {
     }
 
     function renderState(state) {
-      if (!state || typeof state !== 'object' || Object.keys(state).length === 0) return '<em>Empty state</em>';
+      if (!state || typeof state !== 'object' || Object.keys(state).length === 0) {
+        return `<div style="padding:8px 10px;background:rgba(128,128,128,0.06);border:1px solid rgba(128,128,128,0.12);border-radius:6px;font-size:11px;line-height:1.4;">
+          <div style="font-weight:600;color:var(--vscode-descriptionForeground, rgba(128,128,128,0.85));margin-bottom:2px;">No snapshot fields</div>
+          <div style="opacity:0.75;">Override <code>Map&lt;String, Object?&gt; snapshot()</code> in your store to display live state fields here.</div>
+        </div>`;
+      }
       let html = '<div class="state-tree">';
       for (const [k, v] of Object.entries(state)) html += renderItem(k, v);
       html += '</div>';
