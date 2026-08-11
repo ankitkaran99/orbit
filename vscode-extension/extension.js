@@ -1048,10 +1048,10 @@ class OrbitStateWebviewProvider {
 
     function renderState(state) {
       if (!state || typeof state !== 'object' || Object.keys(state).length === 0) {
-        return `<div style="padding:8px 10px;background:rgba(128,128,128,0.06);border:1px solid rgba(128,128,128,0.12);border-radius:6px;font-size:11px;line-height:1.4;">
-          <div style="font-weight:600;color:var(--vscode-descriptionForeground, rgba(128,128,128,0.85));margin-bottom:2px;">No snapshot fields</div>
-          <div style="opacity:0.75;">Override <code>Map&lt;String, Object?&gt; snapshot()</code> in your store to display live state fields here.</div>
-        </div>`;
+        return '<div style="padding:8px 10px;background:rgba(128,128,128,0.06);border:1px solid rgba(128,128,128,0.12);border-radius:6px;font-size:11px;line-height:1.4;">' +
+          '<div style="font-weight:600;color:var(--vscode-descriptionForeground,rgba(128,128,128,0.85));margin-bottom:2px;">No snapshot fields</div>' +
+          '<div style="opacity:0.75;">Override <code>Map&lt;String, Object?&gt; snapshot()</code> in your store to see live state here.</div>' +
+          '</div>';
       }
       let html = '<div class="state-tree">';
       for (const [k, v] of Object.entries(state)) html += renderItem(k, v);
