@@ -1,6 +1,6 @@
 ## 0.6.6
 
-- **Fix (Static Analysis)**: Enclosed `if` statement in block in `lib/src/orbit_container.dart` (`_purgeUndoEntriesFor`) to satisfy `curly_braces_in_flow_control_structures` static analysis rule and restore 50/50 pub.dev score.
+- **Fix (Static Analysis & Lints)**: Configured `analysis_options.yaml` with `flutter_lints`, enclosed `if` statement in block in `lib/src/orbit_container.dart` (`_purgeUndoEntriesFor`) to satisfy `curly_braces_in_flow_control_structures`, and resolved all code quality issues (`prefer_const_constructors_in_immutables`, `use_super_parameters`, `prefer_function_declarations_over_variables`, `unnecessary_brace_in_string_interps`, and `empty_statements`).
 
 ## 0.6.5
 

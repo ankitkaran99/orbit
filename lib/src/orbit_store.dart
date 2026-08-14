@@ -196,7 +196,7 @@ abstract class OrbitStore extends ChangeNotifier {
     FutureOr<T> Function() fn, {
     String? label,
   }) {
-    final effectiveLabel = label ?? '${runtimeType}.batch';
+    final effectiveLabel = label ?? '$runtimeType.batch';
     _openScopedBatch(effectiveLabel);
     Orbit._openUndoBatch(effectiveLabel);
 
@@ -512,7 +512,7 @@ abstract class OrbitStore extends ChangeNotifier {
     if (_disposed) return;
     final other = storeRef();
     if (other._disposed) return; // Don't attach to an already-disposed store
-    final listener = () {
+    void listener() {
       if (_disposed) return;
       try {
         // Invoke via dynamic so we can inspect the runtime return value:
@@ -543,7 +543,7 @@ abstract class OrbitStore extends ChangeNotifier {
               'watching ${other.runtimeType}'),
         ));
       }
-    };
+    }
     other.addListener(listener);
     _watchDisposers.add(() => other.removeListener(listener));
   }

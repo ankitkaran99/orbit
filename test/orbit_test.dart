@@ -753,7 +753,7 @@ void main() {
         'data 123',
       );
 
-      final errorVal = AsyncValue<int>.error('err');
+      const errorVal = AsyncValue<int>.error('err');
       expect(
         errorVal.when(
           data: (d) => 'data $d',

@@ -76,7 +76,9 @@ class _ThrowingResumeStore extends OrbitStore {
 // Orbit.use() keys singletons by static Type, so two bare
 // ComputedStore<int>s would collide with each other regardless of the
 // cycle we're trying to test.
+// ignore: library_private_types_in_public_api
 late final OrbitStoreRef<_CircularA> circularARef;
+// ignore: library_private_types_in_public_api
 late final OrbitStoreRef<_CircularB> circularBRef;
 
 class _CircularA extends ComputedStore<int> {
@@ -300,7 +302,7 @@ void main() {
           Directionality(
             textDirection: TextDirection.ltr,
             child: OrbitSelector<_Counter, int>(
-              store: store,
+              store: () => store(),
               selector: (s) => s.count,
               equals: (prev, next) {
                 callCount++;

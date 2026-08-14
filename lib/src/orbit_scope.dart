@@ -129,10 +129,10 @@ class _OrbitScopeState<T extends OrbitStore> extends State<OrbitScope<T>> {
 }
 
 class _OrbitScopeInherited<T extends OrbitStore> extends InheritedNotifier<T> {
-  _OrbitScopeInherited({
+  const _OrbitScopeInherited({
     required this.store,
-    required Widget child,
-  }) : super(notifier: store, child: child);
+    required super.child,
+  }) : super(notifier: store);
 
   final T store;
 }
