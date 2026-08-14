@@ -365,7 +365,8 @@ abstract class OrbitStore extends ChangeNotifier {
   /// Asynchronously executes [action], then passes the result to [apply] inside [mutate] if successful.
   ///
   /// If an error occurs during [action], calls [onError] if provided; otherwise
-  /// records the error and rethrows.
+  /// records the error and rethrows. Optional [label] names this mutation in
+  /// debug logs, DevTools, and action tracking.
   @protected
   Future<void> mutateAsync<T>({
     required Future<T> Function() action,

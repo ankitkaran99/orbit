@@ -36,8 +36,9 @@ class CounterStore extends OrbitStore {
     required Future<T> Function() action,
     required void Function(T result) apply,
     void Function(Object error, StackTrace stack)? onError,
+    String? label,
   }) =>
-      mutateAsync<T>(action: action, apply: apply, onError: onError);
+      mutateAsync<T>(action: action, apply: apply, onError: onError, label: label);
 
   @override
   Map<String, Object?> snapshot() => {'count': _count};
@@ -153,6 +154,23 @@ void main() {
       );
 
       expect(errorCaught, isTrue);
+    });
+
+    test('mutateAsync({label, action, apply, onError}) uses provided label',
+        () async {
+      final store = Orbit.use<CounterStore>(() => CounterStore());
+      final received = <OrbitMutation>[];
+      final unsubscribe = Orbit.observe((s, m) => received.add(m));
+
+      await store.runMutateAsyncTyped<int>(
+        label: 'customAsyncLabel',
+        action: () async => 10,
+        apply: (res) {},
+      );
+
+      unsubscribe();
+      expect(received, hasLength(1));
+      expect(received.first.action, 'customAsyncLabel');
     });
 
     test(
