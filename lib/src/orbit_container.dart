@@ -259,8 +259,9 @@ class Orbit {
   /// encountered lazily, but there's no reason to keep it around until
   /// then when we already know at dispose time.
   static void _purgeUndoEntriesFor(OrbitStore store) {
-    if (_undoStack.isEmpty && _redoStack.isEmpty && _currentUndoGroup == null)
+    if (_undoStack.isEmpty && _redoStack.isEmpty && _currentUndoGroup == null) {
       return;
+    }
 
     void purgeFrom(List<OrbitUndoItem> stack) {
       stack.removeWhere((item) {
