@@ -35,7 +35,7 @@ Type any of the following prefixes in `.dart` files:
 | `os-context` | `final store = context.orbit<MyStore>();` scoped store context lookup and listener subscription. |
 | `os-context-read` | `final store = context.orbitRead<MyStore>();` store context lookup without rebuilding. |
 | `os-mutate` | `mutate(() => ...);` mutation state change. |
-| `os-mutate-async` | `await mutateAsync<T>(label: ..., action: ..., apply: ..., onError: ...);` decoupled multi-step async mutation. |
+| `os-mutate-async` | `await mutateAsync<T>(action: ..., apply: ..., onError: ...);` decoupled multi-step async mutation. |
 | `os-batch` | `batch(() { ... });` deferred notification batch and atomic undo step. |
 | `os-undoable` | `OrbitStore with Undoable` declaration with `snapshot()` and `restore()`. |
 | `os-observe` | `Orbit.observe((store, mutation) { ... })` global mutation middleware listener. |

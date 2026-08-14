@@ -50,7 +50,7 @@ class CounterStore extends OrbitStore {
   // Asynchronous mutation (action -> apply -> onError)
   Future<void> createInvoice(String customerId, List<Item> items) async {
     await mutateAsync(
-      label: 'createInvoice',
+      // label: 'createInvoice',                   // optional — auto-inferred if omitted
       action: () async {
         final customer = await api.validateCustomer(customerId);
         final invoice = await api.createInvoice(customer, items);

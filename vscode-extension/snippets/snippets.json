@@ -153,13 +153,12 @@
     "prefix": "os-mutate-async",
     "body": [
       "await mutateAsync<${1:T}>(",
-      "  label: '${2:actionName}',",
       "  action: () async {",
-      "    ${3:// long-running async work}",
-      "    return ${4:result};",
+      "    ${2:// long-running async work}",
+      "    return ${3:result};",
       "  },",
-      "  apply: (result) => _${5:state} = result,",
-      "  onError: (e, st) => ${6:/* handle error */},",
+      "  apply: (result) => _${4:state} = result,",
+      "  onError: (e, st) => ${5:/* handle error */},",
       ");"
     ],
     "description": "Inserts a mutateAsync call inside OrbitStore decoupling async operations from safe state commits"
