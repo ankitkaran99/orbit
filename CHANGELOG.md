@@ -1,3 +1,9 @@
+## 0.6.5
+
+- **Feature (`mutateAsync`)**: Added optional `label` parameter to `mutateAsync` for explicit action logging and DevTools tracking.
+- **Fix (VS Code Inspector)**: Prevented premature 0-listener flash during hot restart by removing fake optimistic store creation and delaying store fetches until the widget tree mounts.
+- **Optimization (Undo History)**: Automatically purge entries from active `_currentUndoGroup` when a store is unregistered or disposed.
+
 ## 0.6.4
 
 - **Fix (VS Code Inspector)**: `developer.postEvent` only reliably serializes flat `Map<String, String>` values across Dart/Flutter SDK versions. Nested snapshot maps (e.g. a `Map<String, Object?>` returned by `snapshot()`) were being silently dropped or converted via `.toString()`, causing the inspector to always show "No snapshot fields" even when `snapshot()` was properly overridden. The fix JSON-encodes the state string on the Dart side and decodes it in the extension, making real-time state display work correctly for all snapshot shapes.

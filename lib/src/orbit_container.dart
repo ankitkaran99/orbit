@@ -259,7 +259,8 @@ class Orbit {
   /// encountered lazily, but there's no reason to keep it around until
   /// then when we already know at dispose time.
   static void _purgeUndoEntriesFor(OrbitStore store) {
-    if (_undoStack.isEmpty && _redoStack.isEmpty) return;
+    if (_undoStack.isEmpty && _redoStack.isEmpty && _currentUndoGroup == null)
+      return;
 
     void purgeFrom(List<OrbitUndoItem> stack) {
       stack.removeWhere((item) {
@@ -275,6 +276,9 @@ class Orbit {
 
     purgeFrom(_undoStack);
     purgeFrom(_redoStack);
+    if (_currentUndoGroup != null) {
+      _currentUndoGroup!.entries.removeWhere((e) => identical(e.store, store));
+    }
   }
 
   /// Reverts the most recent mutation (or batch of mutations) across all [Undoable] stores.

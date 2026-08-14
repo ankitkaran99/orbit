@@ -38,7 +38,8 @@ class CounterStore extends OrbitStore {
     void Function(Object error, StackTrace stack)? onError,
     String? label,
   }) =>
-      mutateAsync<T>(action: action, apply: apply, onError: onError, label: label);
+      mutateAsync<T>(
+          action: action, apply: apply, onError: onError, label: label);
 
   @override
   Map<String, Object?> snapshot() => {'count': _count};
